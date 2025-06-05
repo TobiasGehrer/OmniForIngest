@@ -1,0 +1,21 @@
+.escape-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+}
+
+.escape-menu__list {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    row-gap: 24px;
+    max-width: 400px;
+}

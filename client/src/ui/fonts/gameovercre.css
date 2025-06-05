@@ -1,0 +1,5 @@
+@font-face {
+    font-family: "gameovercre";
+    src: local("gameovercre"),
+    url("/assets/fonts/gameovercre.woff") format("woff");
+}

@@ -1,0 +1,25 @@
+.button[variant="primary"] {
+    width: 100%;
+    padding: 20px 30px;
+    border-width: 0;
+    border-radius: 12px;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    background-color: transparent;
+    font-family: inherit;
+    font-size: 20px;
+    color: white;
+    transition: transform .1s ease, filter .1s ease;
+    cursor: url("/assets/cursors/pointer.png"), auto;
+
+    &[buttonSize="big"] {
+        padding: 32px;
+        font-size: 24px;
+    }
+
+    &:hover {
+        transform: translateY(2px);
+        filter: brightness(1.1);
+    }
+}

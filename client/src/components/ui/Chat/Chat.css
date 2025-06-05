@@ -1,0 +1,93 @@
+.game-chat {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    flex-direction: column;
+    width: 450px;
+    max-height: 450px;
+    padding: 30px;
+    border-width: 0;
+    border-radius: 12px;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    background-color: rgba(0, 0, 0, 0.6);
+    transition: opacity 0.5s ease;
+    opacity: 1;
+    z-index: 1000;
+}
+
+.game-chat--active {
+    opacity: 1;
+}
+
+.game-chat--hidden:not(:has(:focus)) {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.game-chat__messages {
+    max-height: 150px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.game-chat__messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.game-chat__messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.game-chat__messages::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.game-chat__message {
+    font-size: 14px;
+    line-height: 1.4;
+    color: white;
+    word-break: break-word;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+
+    &:not(:nth-last-child(-n+2)) {
+        margin-bottom: 8px;
+    }
+}
+
+.game-chat__player-name {
+    margin-right: 5px;
+    font-weight: bold;
+    /* Color is set inline via style prop */
+}
+
+.game-chat__message-text {
+    color: white;
+}
+
+.game-chat__input-container {
+    padding-top: 10px;
+}
+
+.game-chat__input {
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.1);
+    font-size: 14px;
+    color: white;
+}
+
+.game-chat__input:focus {
+    outline: none;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.game-chat__input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}

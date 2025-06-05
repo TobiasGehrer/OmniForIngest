@@ -1,0 +1,62 @@
+.game-ui {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    pointer-events: none;
+    z-index: 1000;
+    --healthbar-scale: 4; /*Keep in sync with the JS healthbarScale*/
+}
+
+.game-ui__connection-info {
+    display: flex;
+    flex-direction: column;
+    row-gap: 8px;
+    padding: 30px;
+    border-width: 0;
+    border-radius: 12px 12px 0 0;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    font-size: 16px;
+    color: white;
+}
+
+.game-ui__ping {
+    color: red;
+}
+
+.game-ui__ping--active {
+    color: limegreen;
+}
+
+.game-ui__player-health {
+    position: fixed;
+    bottom: -20px;
+    left: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 30px 30px 40px 30px;
+    border-width: 0;
+    border-radius: 12px 12px 0 0;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    background-color: transparent;
+    font-family: gameovercre, sans-serif;
+    color: white;
+    transform: translateX(-50%);
+}
+
+.game-ui__player-health-label {
+    padding-left: 24px;
+}
+
+.game-ui__player-health-bar {
+    width: calc(42px * var(--healthbar-scale));
+    height: calc(7px * var(--healthbar-scale));
+    background-repeat: no-repeat;
+    background-size: calc(100% + 100% * var(--healthbar-scale));
+    image-rendering: pixelated;
+}

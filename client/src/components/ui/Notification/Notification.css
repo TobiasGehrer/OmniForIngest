@@ -1,0 +1,47 @@
+.notification__container {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    max-width: 400px;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.notification__item {
+    position: absolute;
+    right: 10px;
+    width: 100%;
+    padding: 30px;
+    border-width: 0;
+    border-radius: 12px;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    font-size: 18px;
+    color: white;
+    text-align: center;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out, top 0.3s ease-out;
+    opacity: 1;
+}
+
+.notification__item.fade-out {
+    transform: translateY(-10px);
+    opacity: 0;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.notification__item.slide-in {
+    animation: slideIn 0.3s ease-in-out;
+}

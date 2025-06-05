@@ -1,0 +1,24 @@
+services:
+# Redis database for session storage
+  redis:
+    image: redis:latest
+    container_name: redis-session
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  auth-db:
+    image: postgres:latest
+    container_name: postgres-auth
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - auth-db_data:/var/lib/postgresql/data
+
+volumes:
+  auth-db_data:
+    driver: local
