@@ -111,13 +111,16 @@ export default class InputManager {
 
             // Send position update
             if (time - this.lastPositionSent > this.positionUpdateInterval) {
-                this.websocket.sendMessage('position', {
-                    x: localPlayer.x,
-                    y: localPlayer.y,
-                    vx: isDead ? 0 : body.velocity.x / this.playerSpeed, // Normalized velocity for animation
-                    vy: isDead ? 0 : body.velocity.y / this.playerSpeed, // Normalized velocity for animation
-                    flipX: localPlayer.flipX
-                });
+                // Only send if WebSocket is connected
+                if (this.websocket.isSocketConnected()) {
+                    this.websocket.sendMessage('position', {
+                        x: localPlayer.x,
+                        y: localPlayer.y,
+                        vx: isDead ? 0 : body.velocity.x / this.playerSpeed, // Normalized velocity for animation
+                        vy: isDead ? 0 : body.velocity.y / this.playerSpeed, // Normalized velocity for animation
+                        flipX: localPlayer.flipX
+                    });
+                }
                 this.lastPositionSent = time;
             }
 
@@ -135,10 +138,12 @@ export default class InputManager {
                     const normalizedDirectionY = directionY / length;
 
                     // Send attack message with direction
-                    this.websocket.sendMessage('attack', {
-                        directionX: normalizedDirectionX,
-                        directionY: normalizedDirectionY
-                    });
+                    if (this.websocket.isSocketConnected()) {
+                        this.websocket.sendMessage('attack', {
+                            directionX: normalizedDirectionX,
+                            directionY: normalizedDirectionY
+                        });
+                    }
                     this.lastAttackSent = time;
 
                     // Play attack sound

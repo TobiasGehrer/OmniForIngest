@@ -37,6 +37,9 @@ public class GameServerEndpoint {
         String mapId = null;
 
         try {
+            // Set session timeout to 5 minutes
+            session.setMaxIdleTimeout(300000L); // 5 minutes in milliseconds
+            
             // Extract username from token parameter
             List<String> tokenParams = session.getRequestParameterMap().get("token");
             if (tokenParams == null || tokenParams.isEmpty()) {
@@ -56,7 +59,9 @@ public class GameServerEndpoint {
 
             mapId = mapParams.get(0);
 
-            logger.info("WebSocket connection opened for player: {} on map: {}", username, mapId);
+            logger.info("WebSocket connection opened for player: {} on map: {} with timeout: {}ms", 
+                       username, mapId, session.getMaxIdleTimeout());
+            logger.debug("Session ID: {}, Query string: {}", session.getId(), session.getQueryString());
 
             // Store both username and mapId in session for later use
             session.getUserProperties().put("username", username);
@@ -79,15 +84,17 @@ public class GameServerEndpoint {
     }
 
     @OnClose
-    public void onClose(Session session) {
+    public void onClose(Session session, CloseReason closeReason) {
         try {
             String username = (String) session.getUserProperties().get("username");
             String mapId = (String) session.getUserProperties().get("mapId");
 
             if (username != null && mapId != null) {
-                logger.info("WebSocket connection closed for player: {} on map: {}", username, mapId);
+                logger.warn("WebSocket connection closed for player: {} on map: {} - Close Code: {} - Reason: {}", 
+                    username, mapId, closeReason.getCloseCode(), closeReason.getReasonPhrase());
             } else {
-                logger.info("WebSocket connection closed for unknown player (properties not set)");
+                logger.warn("WebSocket connection closed for unknown player (properties not set) - Close Code: {} - Reason: {}", 
+                    closeReason.getCloseCode(), closeReason.getReasonPhrase());
             }
 
             gameService.disconnectBySession(session);
@@ -123,10 +130,25 @@ public class GameServerEndpoint {
 
     @OnError
     public void onError(Session session, Throwable throwable) {
-        String username = (String) session.getUserProperties().get("username");
-        String mapId = (String) session.getUserProperties().get("mapId");
+        String username = "UNKNOWN";
+        String mapId = "UNKNOWN";
+        
+        try {
+            // Safely get user properties from session
+            if (session != null && session.isOpen()) {
+                username = (String) session.getUserProperties().get("username");
+                mapId = (String) session.getUserProperties().get("mapId");
+            }
+        } catch (Exception e) {
+            logger.debug("Could not retrieve session properties: {}", e.getMessage());
+        }
 
         logger.error("WebSocket error for player: {} on map: {}", username, mapId, throwable);
-        gameService.disconnectBySession(session);
+        
+        try {
+            gameService.disconnectBySession(session);
+        } catch (Exception e) {
+            logger.error("Error during disconnect handling: {}", e.getMessage());
+        }
     }
 }

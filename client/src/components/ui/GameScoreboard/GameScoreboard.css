@@ -1,0 +1,205 @@
+.game-scoreboard {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    animation: scoreboard-appear 0.5s ease-out;
+}
+
+@keyframes scoreboard-appear {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.game-scoreboard__container {
+    display: flex;
+    flex-direction: column;
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    padding: 30px;
+    border-width: 0;
+    border-radius: 12px;
+    border-image-source: url("/ui/border-filled.png");
+    border-image-slice: 41 44 41 47 fill;
+    border-image-width: 20px 20px 20px 20px;
+    background-color: rgba(0, 0, 0, 0.95);
+    color: white;
+    font-family: gameovercre, sans-serif;
+    overflow-y: auto;
+}
+
+.game-scoreboard__header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.game-scoreboard__header h2 {
+    margin: 0 0 10px 0;
+    font-size: 32px;
+    color: #63ab3f;
+    text-shadow: 0 0 10px rgba(99, 171, 63, 0.5);
+}
+
+.game-scoreboard__reason {
+    font-size: 16px;
+    color: #fbbf24;
+    margin-bottom: 8px;
+}
+
+.game-scoreboard__duration {
+    font-size: 14px;
+    color: #94a3b8;
+}
+
+.game-scoreboard__your-result {
+    background: linear-gradient(135deg, rgba(99, 171, 63, 0.2), rgba(99, 171, 63, 0.1));
+    border: 1px solid #63ab3f;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 25px;
+    text-align: center;
+}
+
+.game-scoreboard__your-rank {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #4ade80;
+}
+
+.game-scoreboard__your-stats {
+    font-size: 16px;
+    color: #86efac;
+}
+
+.game-scoreboard__rankings h3 {
+    margin: 0 0 15px 0;
+    font-size: 20px;
+    color: #63ab3f;
+    text-align: center;
+}
+
+.game-scoreboard__ranking-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 25px;
+}
+
+.game-scoreboard__ranking-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.game-scoreboard__ranking-item--local {
+    background: linear-gradient(135deg, rgba(99, 171, 63, 0.3), rgba(99, 171, 63, 0.1));
+    border: 1px solid #63ab3f;
+    box-shadow: 0 0 15px rgba(99, 171, 63, 0.3);
+}
+
+.game-scoreboard__rank {
+    font-size: 24px;
+    font-weight: bold;
+    margin-right: 15px;
+    min-width: 50px;
+    text-align: center;
+    text-shadow: 0 0 10px currentColor;
+}
+
+.game-scoreboard__player-info {
+    flex: 1;
+}
+
+.game-scoreboard__player-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.game-scoreboard__you-label {
+    color: #4ade80;
+    font-size: 14px;
+    font-weight: normal;
+}
+
+.game-scoreboard__player-stats {
+    font-size: 14px;
+    color: #94a3b8;
+}
+
+.game-scoreboard__actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.game-scoreboard__btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    min-width: 120px;
+}
+
+.game-scoreboard__btn--primary {
+    background-color: #63ab3f;
+    color: white;
+}
+
+.game-scoreboard__btn--primary:hover {
+    background-color: #4f8c31;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 171, 63, 0.4);
+}
+
+.game-scoreboard__btn--secondary {
+    background-color: #64748b;
+    color: white;
+}
+
+.game-scoreboard__btn--secondary:hover {
+    background-color: #475569;
+    transform: translateY(-2px);
+}
+
+/* Scrollbar styling */
+.game-scoreboard__container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.game-scoreboard__container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.game-scoreboard__container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.game-scoreboard__container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}

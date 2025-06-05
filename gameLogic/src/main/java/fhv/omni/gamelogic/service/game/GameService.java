@@ -7,10 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -31,15 +28,15 @@ public class GameService {
         cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 5, 5, TimeUnit.MINUTES);
     }
 
-    public boolean connect(String playerId, String mapId, Session session) {
-        logger.info("Connectin player {} to map {}", playerId, mapId);
+    public boolean connect(String username, String mapId, Session session) {
+        logger.info("Connectin player {} to map {}", username, mapId);
 
         GameRoom room = gameRooms.computeIfAbsent(mapId, k -> new GameRoom(mapId));
-        boolean connected = room.connect(playerId, session);
+        boolean connected = room.connect(username, session);
 
         if (connected) {
             logger.info("Player {} connected to map {}. Room now has {} players",
-                    playerId, mapId, room.getPlayerCount());
+                    username, mapId, room.getPlayerCount());
         } else {
             try {
                 Map<String, Object> errorMessage = new HashMap<>();
@@ -53,44 +50,44 @@ public class GameService {
                     errorMessage.put("message", "Cannot join - game is in progress");
                 } else {
                     errorMessage.put("reason", "unknow");
-                    errorMessage.put("message", "Unable to join rooom");
+                    errorMessage.put("message", "Unable to join room");
                 }
 
                 String json = objectMapper.writeValueAsString(errorMessage);
                 session.getBasicRemote().sendText(json);
                 session.close();
             } catch (IOException e) {
-                logger.error("Error sending connection failed message to player {}: {}", playerId, e.getMessage());
+                logger.error("Error sending connection failed message to player {}: {}", username, e.getMessage());
             }
         }
 
         return connected;
     }
 
-    public void disconnect(String playerId, String mapId) {
+    public void disconnect(String username, String mapId) {
         GameRoom room = gameRooms.get(mapId);
         if (room != null) {
-            room.disconnect(playerId);
+            room.disconnect(username);
             logger.info("Player {} disconnected from map {}. Room now has {} players.",
-                    playerId, mapId, room.getPlayerCount());
+                    username, mapId, room.getPlayerCount());
         }
     }
 
     public void disconnectBySession(Session session) {
-        String playerId = (String) session.getUserProperties().get("playerId");
+        String username = (String) session.getUserProperties().get("username");
         String mapId = (String) session.getUserProperties().get("mapId");
 
-        if (playerId != null && mapId != null) {
-            disconnect(playerId, mapId);
+        if (username != null && mapId != null) {
+            disconnect(username, mapId);
         } else {
-            logger.warn("Could not find playerId or mapId for session during disconnect");
+            logger.warn("Could not find username or mapId for session during disconnect");
         }
     }
 
-    public void handleMessage(String playerId, String mapId, String messageType, Map<String, Object> data) {
+    public void handleMessage(String username, String mapId, String messageType, Map<String, Object> data) {
         GameRoom room = gameRooms.get(mapId);
         if (room != null) {
-            room.handleMessage(playerId, messageType, data);
+            room.handleMessage(username, messageType, data);
         } else {
             logger.warn("Received message for non-existent room: {}", mapId);
         }

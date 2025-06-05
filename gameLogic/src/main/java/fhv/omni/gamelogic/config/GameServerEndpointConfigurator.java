@@ -1,6 +1,9 @@
 package fhv.omni.gamelogic.config;
 
+import jakarta.websocket.server.HandshakeRequest;
 import jakarta.websocket.server.ServerEndpointConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.ApplicationContext;
@@ -10,6 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class GameServerEndpointConfigurator extends ServerEndpointConfig.Configurator implements ApplicationContextAware {
 
+    private static final Logger logger = LoggerFactory.getLogger(GameServerEndpointConfigurator.class);
     private static volatile BeanFactory context;
 
     @Override
@@ -28,5 +32,17 @@ public class GameServerEndpointConfigurator extends ServerEndpointConfig.Configu
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         context = applicationContext;
+    }
+
+    @Override
+    public void modifyHandshake(ServerEndpointConfig sec, HandshakeRequest request, jakarta.websocket.HandshakeResponse response) {
+        super.modifyHandshake(sec, request, response);
+        
+        // Set session timeout to 5 minutes
+        sec.getUserProperties().put("javax.websocket.server.sessionTimeout", 300000L);
+        sec.getUserProperties().put("org.apache.tomcat.websocket.sessionTimeout", 300000L);
+        sec.getUserProperties().put("org.apache.tomcat.websocket.BLOCKING_SEND_TIMEOUT", 30000L);
+        
+        logger.debug("WebSocket handshake completed for endpoint: {} with extended timeout", sec.getPath());
     }
 }

@@ -19,12 +19,42 @@ export default class WebSocketService {
     private serverUrl: string = 'ws://localhost:8081/game';
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private connectionTimeoutMs: number = 5000;
+    private currentMap: string = 'map1'; // Default map
+    private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    private lastHeartbeat: number = 0;
+    private gameState: string = 'WAITING';
 
     public static getInstance(): WebSocketService {
         if (!WebSocketService.instance) {
             WebSocketService.instance = new WebSocketService();
+            WebSocketService.instance.setupVisibilityHandling();
         }
         return WebSocketService.instance;
+    }
+
+    /**
+     * Set up page visibility handling to prevent disconnections on inactive tabs
+     */
+    private setupVisibilityHandling(): void {
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', () => {
+                console.log('[WebSocket] Page visibility changed:', document.visibilityState, 'at', new Date().toISOString());
+                console.log('[WebSocket] Connection state:', this.isConnected);
+                console.log('[WebSocket] Game state:', this.gameState);
+                
+                if (document.visibilityState === 'visible' && !this.isConnected) {
+                    console.log('Page became visible and WebSocket is disconnected');
+                    console.log('Attempting reconnect...');
+                    setTimeout(() => {
+                        if (!this.isConnected) {
+                            this.connect();
+                        }
+                    }, 1000);
+                } else if (document.visibilityState === 'hidden' && this.isConnected) {
+                    console.log('[WebSocket] Page became hidden but connection is still active');
+                }
+            });
+        }
     }
 
     /**
@@ -39,10 +69,36 @@ export default class WebSocketService {
     }
 
     /**
+     * Set the current map for WebSocket connections
+     * @param mapKey The map key to use for connections
+     */
+    public setCurrentMap(mapKey: string): void {
+        this.currentMap = mapKey;
+        console.log(`WebSocket map set to: ${mapKey}`);
+    }
+
+    /**
+     * Get the current map
+     * @returns The current map key
+     */
+    public getCurrentMap(): string {
+        return this.currentMap;
+    }
+
+    /**
+     * Update the current game state
+     * @param gameState The new game state
+     */
+    public setGameState(gameState: string): void {
+        this.gameState = gameState;
+        console.log('Game state updated to:', gameState);
+    }
+
+    /**
      * Connect to the WebSocket server
      * @param serverUrl Optional server URL to override the configured one
      */
-    public connect(serverUrl?: string): void {
+    public connect(serverUrl?: string, mapKey?: string): void {
         // Clear any existing reconnect timers
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
@@ -60,9 +116,11 @@ export default class WebSocketService {
             return;
         }
 
+        const selectedMap = mapKey || this.getSelectedMapFromStorage() || this.currentMap;
+        this.currentMap = selectedMap;
+
         const urlToUse = serverUrl || this.serverUrl;
-        // TODO: Change map to dynamic value
-        this.url = `${urlToUse}?token=${this.username}&map=map1`;
+        this.url = `${urlToUse}?token=${encodeURIComponent(this.username)}&map=${encodeURIComponent(selectedMap)}`;
         console.log('Connecting to WebSocket server at:', this.url);
 
         try {
@@ -78,7 +136,7 @@ export default class WebSocketService {
             }, this.connectionTimeoutMs);
 
             this.socket.onopen = () => {
-                console.log('WebSocket connected');
+                console.log(`[WebSocket] Connected to map: ${selectedMap} at`, new Date().toISOString());
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
 
@@ -88,15 +146,35 @@ export default class WebSocketService {
                     this.connectionTimeout = null;
                 }
 
-                this.send({
-                    type: 'join_game',
-                    username: this.username
+                this.sendMessage('join_game', {
+                    username: this.username,
+                    mapId: selectedMap
                 });
+
+                // Start heartbeat to keep connection alive
+                this.startHeartbeat();
             };
 
             this.socket.onclose = (event) => {
-                console.log('WebSocket disconnected', event.code, event.reason);
+                console.log(`[WebSocket] DISCONNECTED at ${new Date().toISOString()} - Code:`, event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
+                console.log('[WebSocket] Document visibility:', document.visibilityState);
+                console.log('[WebSocket] Game state when disconnected:', this.gameState);
+                console.log('[WebSocket] Username:', this.username);
+                console.log('[WebSocket] Stack trace at disconnect:');
+                console.trace();
                 this.isConnected = false;
+
+                // Stop heartbeat
+                this.stopHeartbeat();
+
+                // Reset game state to prevent getting stuck in PLAYING state
+                if (event.code === 1000) {
+                    // Normal closure - likely due to page visibility, keep game state
+                    console.log('Normal closure detected, keeping game state');
+                } else {
+                    // Abnormal closure - reset to waiting
+                    this.setGameState('WAITING');
+                }
 
                 // Clear connection timeout if it exists
                 if (this.connectionTimeout) {
@@ -111,7 +189,10 @@ export default class WebSocketService {
             };
 
             this.socket.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.error('[WebSocket] ERROR occurred at', new Date().toISOString(), ':', error);
+                console.log('[WebSocket] Error details - readyState:', this.socket?.readyState);
+                console.log('[WebSocket] Error details - url:', this.url);
+                console.trace('[WebSocket] Error stack trace:');
                 // Error handling will be done in onclose
             };
 
@@ -119,6 +200,14 @@ export default class WebSocketService {
                 try {
                     // Parse the message to ensure its valid JSON
                     const data = JSON.parse(event.data);
+
+                    // Log critical game events
+                    if (['countdown_started', 'countdown', 'game_started', 'game_ended'].includes(data.type)) {
+                        console.log(`[WebSocket] Critical event received:`, data.type, data);
+                    }
+
+                    // Track game state changes automatically
+                    this.updateGameStateFromMessage(data);
 
                     // Call specific message type handlers
                     if (data.type && this.messageTypeHandlers.has(data.type)) {
@@ -141,6 +230,9 @@ export default class WebSocketService {
      * Disconnect from the WebSocket server
      */
     public disconnect(): void {
+        console.log('[WebSocket] EXPLICIT DISCONNECT called at', new Date().toISOString());
+        console.trace('Disconnect call stack:');
+        
         // Clear any pending timeouts
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
@@ -151,6 +243,9 @@ export default class WebSocketService {
             clearTimeout(this.connectionTimeout);
             this.connectionTimeout = null;
         }
+
+        // Stop heartbeat
+        this.stopHeartbeat();
 
         // Reset reconnect attempts
         this.reconnectAttempts = 0;
@@ -217,7 +312,7 @@ export default class WebSocketService {
      * @returns Whether the WebSocket is connected
      */
     public isSocketConnected(): boolean {
-        return this.isConnected;
+        return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
     }
 
     /**
@@ -272,6 +367,19 @@ export default class WebSocketService {
     }
 
     /**
+     * Get the selected map from session storage
+     * @private
+     */
+    private getSelectedMapFromStorage(): string | null {
+        try {
+            return sessionStorage.getItem('selectedMapKey');
+        } catch (e) {
+            console.warn('Could not access sessionStorage:', e);
+            return null;
+        }
+    }
+
+    /**
      * Handle reconnection logic
      * @private
      */
@@ -285,6 +393,58 @@ export default class WebSocketService {
             }, this.reconnectTimeout);
         } else {
             console.error('Max reconnect attempts reached. Please try again later.');
+        }
+    }
+
+    /**
+     * Start heartbeat to keep connection alive
+     * @private
+     */
+    private startHeartbeat(): void {
+        this.stopHeartbeat(); // Clear any existing heartbeat
+
+        this.heartbeatInterval = setInterval(() => {
+            if (this.isConnected && this.socket?.readyState === WebSocket.OPEN) {
+                this.lastHeartbeat = Date.now();
+                this.sendMessage('heartbeat', { timestamp: this.lastHeartbeat });
+            }
+        }, 60000); // Send heartbeat every 60 seconds
+    }
+
+    /**
+     * Stop heartbeat
+     * @private
+     */
+    private stopHeartbeat(): void {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
+    /**
+     * Update game state based on incoming WebSocket messages
+     * @private
+     */
+    private updateGameStateFromMessage(data: any): void {
+        switch (data.type) {
+            case 'room_status':
+                if (data.gameState) {
+                    this.setGameState(data.gameState);
+                }
+                break;
+            case 'countdown_started':
+                this.setGameState('COUNTDOWN');
+                break;
+            case 'game_started':
+                this.setGameState('PLAYING');
+                break;
+            case 'game_ended':
+                this.setGameState('FINISHED');
+                break;
+            case 'countdown_cancelled':
+                this.setGameState('WAITING');
+                break;
         }
     }
 }

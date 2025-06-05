@@ -14,10 +14,12 @@ import java.io.Reader;
 
 @Configuration
 public class WebSocketConfig {
+    
     @Bean
     public ServerEndpointExporter serverEndpointExporter() {
         return new ServerEndpointExporter();
     }
+
 
     public static class GameInputDecoder implements Decoder.TextStream<GameInput> {
         private final ObjectMapper objectMapper;

@@ -9,6 +9,9 @@ import GameplayLoadingScene from './scenes/GameplayLoadingScene.ts';
 import Notification from '../ui/Notification/Notification';
 import GameUI from '../ui/GameUI/GameUI';
 import Chat from '../ui/Chat/Chat';
+import GameLobbyUI from '../ui/GameLobbyUI/GameLobbyUI';
+import GameTimer from '../ui/GameTimer/GameTimer';
+import GameScoreboard from '../ui/GameScoreboard/GameScoreboard';
 import WebSocketService from '../services/WebSocketService.ts';
 import GameConfig = Phaser.Types.Core.GameConfig;
 
@@ -138,6 +141,9 @@ const Game: React.FC<GameProps> = () => {
                     <Notification/>
                     <GameUI/>
                     <Chat displayDuration={5000} username={fetchedUserName}/>
+                    <GameLobbyUI username={fetchedUserName}/>
+                    <GameTimer/>
+                    <GameScoreboard username={fetchedUserName}/>
                 </>
             )}
         </>

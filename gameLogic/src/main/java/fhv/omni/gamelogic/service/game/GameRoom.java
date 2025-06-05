@@ -7,10 +7,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 
@@ -22,12 +20,20 @@ public class GameRoom {
     private final Map<String, Boolean> playerReadyStatus = new ConcurrentHashMap<>();
     private final List<ProjectileState> projectiles = new ArrayList<>();
     private final GameStats gameStats = new GameStats();
+    
+    // Message queuing per session to prevent TEXT_FULL_WRITING errors
+    private final Map<String, BlockingQueue<String>> messageQueues = new ConcurrentHashMap<>();
+    private final Map<String, AtomicBoolean> sendingInProgress = new ConcurrentHashMap<>();
+    private final Map<String, ExecutorService> playerExecutors = new ConcurrentHashMap<>();
 
     private GameState gameState = GameState.WAITING;
     private int countdownSeconds = 0;
     private long gameStartTime = 0;
+    private long lastCountdownUpdate = 0;
+    private long lastTimeUpdate = 0;
+    private long lastGameStateUpdate = 0;
     private static final int MAX_PLAYERS = 4;
-    private static final int COUNTDOWN_DURATION = 10;
+    private static final int COUNTDOWN_DURATION = 5;
     private static final long GAME_DURATION_MS = 5 * 60 * 1000;
 
     private static final long TICK_RATE_MS = 1000 / 60;
@@ -61,11 +67,17 @@ public class GameRoom {
     }
 
     private void updateCountdown() {
-        if (System.currentTimeMillis() % 1000 < TICK_RATE_MS) {
+        long currentTime = System.currentTimeMillis();
+        
+        // Only update countdown once per second
+        if (currentTime - lastCountdownUpdate >= 1000) {
+            lastCountdownUpdate = currentTime;
             countdownSeconds--;
+            logger.debug("Countdown update: {} seconds remaining", countdownSeconds);
             broadcastCountdown(countdownSeconds);
 
             if (countdownSeconds <= 0) {
+                logger.info("Countdown reached 0, triggering game start...");
                 startGame();
             }
         }
@@ -73,7 +85,20 @@ public class GameRoom {
 
     private void updateGame() {
         updateProjectiles();
-        broadcastGameState();
+        
+        long currentTime = System.currentTimeMillis();
+        
+        // Only broadcast game state every 100ms (10 FPS instead of 60 FPS)
+        if (currentTime - lastGameStateUpdate >= 100) {
+            lastGameStateUpdate = currentTime;
+            broadcastGameState();
+        }
+
+        // Only broadcast time remaining once per second
+        if (currentTime - lastTimeUpdate >= 1000) {
+            lastTimeUpdate = currentTime;
+            broadcastTimeRemaining();
+        }
     }
 
     private void checkGameEndConditions() {
@@ -82,22 +107,33 @@ public class GameRoom {
             return;
         }
 
+        // Check if less than 2 players are connected (not just alive)
+        if (players.size() < 2) {
+            endGame("Not enough players remaining");
+            return;
+        }
+
+        // Check if only one player is alive (others are dead but still connected)
         long alivePlayers = playerStates.values().stream()
                 .filter(state -> !state.isDead())
                 .count();
 
-        if (alivePlayers <= 1) {
+        if (alivePlayers <= 1 && players.size() > 1) {
             endGame("Only one player remaining");
         }
     }
 
     private void startGame() {
-        logger.info("Starting game in room: {}", mapId);
+        logger.info("Starting game in room: {} with {} players", mapId, players.size());
+        logger.info("Connected players: {}", players.keySet());
+        
         gameState = GameState.PLAYING;
         gameStartTime = System.currentTimeMillis();
         gameStats.reset();
 
-        playerStates.forEach((playerId, state) -> {
+        logger.info("Resetting player states...");
+        playerStates.forEach((username, state) -> {
+            logger.debug("Resetting state for player: {}", username);
             state.reset();
             state.setPosition(
                     200 + (float) (Math.random() * 400),
@@ -105,7 +141,9 @@ public class GameRoom {
             );
         });
 
+        logger.info("Broadcasting game started message...");
         broadcastGameStarted();
+        logger.info("Game start process completed for room: {}", mapId);
     }
 
     private void endGame(String reason) {
@@ -127,8 +165,8 @@ public class GameRoom {
         logger.info("Kicking all players from room: {}", mapId);
         List<String> playersToKick = new ArrayList<>(players.keySet());
 
-        for (String playerId : playersToKick) {
-            disconnect(playerId);
+        for (String username : playersToKick) {
+            disconnect(username);
         }
 
         resetRoom();
@@ -163,10 +201,10 @@ public class GameRoom {
 
             boolean hit = false;
             for (Map.Entry<String, PlayerState> entry : playerStates.entrySet()) {
-                String targetId = entry.getKey();
+                String targetUsername = entry.getKey();
                 PlayerState targetState = entry.getValue();
 
-                if (targetId.equals(projectile.getOwnerId()) || targetState.isDead()) {
+                if (targetUsername.equals(projectile.getOwnerId()) || targetState.isDead()) {
                     continue;
                 }
 
@@ -178,10 +216,10 @@ public class GameRoom {
                     boolean died = targetState.takeDamage(1);
 
                     if (died) {
-                        gameStats.recordKill(projectile.getOwnerId(), targetId);
+                        gameStats.recordKill(projectile.getOwnerId(), targetUsername);
                     }
 
-                    broadcastDamageEvent(targetId, 1, died);
+                    broadcastDamageEvent(targetUsername, targetState.getHealth(), died);
 
                     hit = true;
                     break;
@@ -195,52 +233,79 @@ public class GameRoom {
         }
     }
 
-    public boolean connect(String playerId, Session session) {
-        if (players.size() >= MAX_PLAYERS) {
-            logger.warn("Player {} tried to join full room {}", playerId, mapId);
+    public boolean connect(String username, Session session) {
+        boolean isExistingPlayer = playerStates.containsKey(username);
+        
+        if (!isExistingPlayer && players.size() >= MAX_PLAYERS) {
+            logger.warn("Player {} tried to join full room {}", username, mapId);
             return false;
         }
 
-        if (gameState == GameState.PLAYING ||gameState == GameState.COUNTDOWN) {
-            logger.warn("Player {} tried to join room {} during game", playerId, mapId);
+        if (!isExistingPlayer && (gameState == GameState.PLAYING || gameState == GameState.COUNTDOWN)) {
+            logger.warn("New player {} tried to join room {} during game", username, mapId);
             return false;
         }
 
-        logger.info("Player connected to map {}: {}", mapId, playerId);
-        players.put(playerId, session);
-        playerReadyStatus.put(playerId, false);
+        if (isExistingPlayer) {
+            logger.info("Existing player {} reconnecting to room {}", username, mapId);
+        }
 
-        PlayerState state = new PlayerState(
-                200 + (float) (Math.random() * 400),
-                200 + (float) (Math.random() * 200),
-                0f, 0f, false
-        );
+        logger.info("Player connected to map {}: {}", mapId, username);
+        players.put(username, session);
+        
+        if (!isExistingPlayer) {
+            // New player - initialize everything
+            playerReadyStatus.put(username, false);
+            PlayerState state = new PlayerState(
+                    200 + (float) (Math.random() * 400),
+                    200 + (float) (Math.random() * 200),
+                    0f, 0f, false
+            );
+            playerStates.put(username, state);
+            broadcastPlayerJoined(username);
+        } else {
+            // Existing player reconnecting - keep their state but update session
+            logger.info("Preserving existing state for reconnecting player: {}", username);
+        }
 
-        playerStates.put(playerId, state);
-        sendPlayerList(playerId);
-        broadcastPlayerJoined(playerId);
+        sendPlayerList(username);
+        sendGameState(username);  // Send current game state to reconnecting player
         broadcastRoomStatus();
 
         return true;
     }
 
-    public void disconnect(String playerId) {
-        logger.info("Player disconnected from map {}: {}", mapId, playerId);
-        Session session = players.remove(playerId);
+    public void disconnect(String username) {
+        logger.info("Player disconnected from map {}: {} (Game state: {})", mapId, username, gameState);
+        logger.info("Players before disconnect: {}", players.keySet());
+        Session session = players.remove(username);
 
         if (session != null) {
             try {
                 session.close();
             } catch (IOException e) {
-                logger.error("Error closing session for player {}: {}", playerId, e.getMessage());
+                logger.error("Error closing session for player {}: {}", username, e.getMessage());
             }
         }
 
-        playerStates.remove(playerId);
-        playerReadyStatus.remove(playerId);
-        broadcastPlayerLeft(playerId);
+        playerStates.remove(username);
+        playerReadyStatus.remove(username);
+        
+        // Clean up message queue resources
+        messageQueues.remove(username);
+        sendingInProgress.remove(username);
+        
+        // Shutdown player-specific executor
+        ExecutorService executor = playerExecutors.remove(username);
+        if (executor != null) {
+            executor.shutdown();
+        }
+        
+        broadcastPlayerLeft(username);
 
-        if (gameState == GameState.COUNTDOWN && !allPlayersReady()) {
+        if (gameState == GameState.COUNTDOWN) {
+            // During countdown, always cancel if someone leaves
+            logger.info("Player left during countdown, canceling countdown");
             cancelCountdown();
         } else if (gameState == GameState.PLAYING) {
             checkGameEndConditions();
@@ -249,32 +314,47 @@ public class GameRoom {
         broadcastRoomStatus();
     }
 
-    public void handleMessage(String playerId, String messageType, Map<String, Object> data) {
+    public void handleMessage(String username, String messageType, Map<String, Object> data) {
         switch (messageType) {
+            case "join_game":
+                // Already handled in connect method
+                break;
             case "ready_toggle":
-                handleReadyToggle(playerId);
+                handleReadyToggle(username);
                 break;
             case "position":
-                handlePositionUpdate(playerId, data);
+                handlePositionUpdate(username, data);
                 break;
             case "attack":
-                handleAttack(playerId, data);
+                handleAttack(username, data);
                 break;
             case "chat_message":
-                handleChatMessage(playerId, data);
+                handleChatMessage(username, data);
                 break;
+            case "heal":
+                handleHeal(username, data);
+                break;
+            case "damage":
+                handleDamage(username, data);
+                break;
+            case "heartbeat":
+                // Heartbeat to keep connection alive - no action needed
+                logger.debug("Heartbeat received from player: {}", username);
+                break;
+            default:
+                logger.warn("Unknown message type: {} for player: {}", messageType, username);
         }
     }
 
-    private void handleReadyToggle(String playerId) {
-        if (gameState == GameState.WAITING) {
+    private void handleReadyToggle(String username) {
+        if (gameState != GameState.WAITING) {
             return;
         }
 
-        boolean currentReady = playerReadyStatus.getOrDefault(playerId, false);
-        playerReadyStatus.put(playerId, !currentReady);
+        boolean currentReady = playerReadyStatus.getOrDefault(username, false);
+        playerReadyStatus.put(username, !currentReady);
 
-        logger.info("Player {} set ready status to {} in room {}", playerId, !currentReady, mapId);
+        logger.info("Player {} set ready status to {} in room {}", username, !currentReady, mapId);
 
         broadcastRoomStatus();
 
@@ -283,7 +363,7 @@ public class GameRoom {
         }
     }
 
-    private void handlePositionUpdate(String playerId, Map<String, Object> data) {
+    private void handlePositionUpdate(String username, Map<String, Object> data) {
         if (gameState != GameState.PLAYING) {
             return;
         }
@@ -295,7 +375,7 @@ public class GameRoom {
             double vy = ((Number) data.getOrDefault("vy", 0.0)).doubleValue();
             boolean flipX = (Boolean) data.getOrDefault("flipX", false);
 
-            PlayerState state = playerStates.get(playerId);
+            PlayerState state = playerStates.get(username);
             if (state != null && !state.isDead()) {
                 state.setX((float) x);
                 state.setY((float) y);
@@ -303,54 +383,81 @@ public class GameRoom {
                 state.setVy((float) vy);
                 state.setFlipX(flipX);
 
-                broadcastPlayerUpdate(playerId);
+                broadcastPlayerUpdate(username);
             }
         } catch (Exception e) {
             logger.error("Error processing position update on map {}: {}", mapId, e.getMessage());
         }
     }
 
-    private void handleAttack(String playerId, Map<String, Object> data) {
+    private void handleAttack(String username, Map<String, Object> data) {
         if (gameState != GameState.PLAYING) {
             return;
         }
 
         try {
-            PlayerState attackerState = playerStates.get(playerId);
+            PlayerState attackerState = playerStates.get(username);
             if (attackerState != null && !attackerState.isDead()) {
                 float directionX = ((Number) data.getOrDefault("directionX", 0.0)).floatValue();
                 float directionY = ((Number) data.getOrDefault("directionY", 0.0)).floatValue();
 
-                createProjectile(playerId, attackerState.getX(), attackerState.getY(), directionX, directionY);
+                createProjectile(username, attackerState.getX(), attackerState.getY(), directionX, directionY);
             }
         } catch (Exception e) {
             logger.error("Error processing attack on map {}: {}", mapId, e.getMessage());
         }
     }
 
-    private void handleChatMessage(String playerId, Map<String, Object> data) {
+    private void handleChatMessage(String username, Map<String, Object> data) {
         try {
-            String userName = (String) data.getOrDefault("userName", "Unknown");
             String message = (String) data.getOrDefault("message", "");
             long timestamp = ((Number) data.getOrDefault("timestamp", System.currentTimeMillis())).longValue();
 
             if (!message.isBlank()) {
                 Map<String, Object> chatPayload = new HashMap<>();
                 chatPayload.put("type", "chat_message");
-                chatPayload.put("userName", userName);
+                chatPayload.put("username", username);
                 chatPayload.put("message", message);
                 chatPayload.put("timestamp", timestamp);
                 String json = objectMapper.writeValueAsString(chatPayload);
-                broadcastExcept(json, playerId);
+                broadcastExcept(json, username);
             }
         } catch (Exception e) {
             logger.error("Error processing chat_message on map {}: {}", mapId, e.getMessage());
         }
     }
 
+    private void handleHeal(String username, Map<String, Object> data) {
+        try {
+            PlayerState playerState = playerStates.get(username);
+            if (playerState != null && !playerState.isDead()) {
+                int healAmount = ((Number) data.getOrDefault("amount", 1)).intValue();
+                boolean wasHealed = playerState.heal(healAmount);
+                if (wasHealed) {
+                    broadcastHealEvent(username, playerState.getHealth());
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error processing heal: {}", e.getMessage());
+        }
+    }
+
+    private void handleDamage(String username, Map<String, Object> data) {
+        try {
+            PlayerState playerState = playerStates.get(username);
+            if (playerState != null && !playerState.isDead()) {
+                int damageAmount = ((Number) data.getOrDefault("amount", 1)).intValue();
+                boolean died = playerState.takeDamage(damageAmount);
+                broadcastDamageEvent(username, playerState.getHealth(), died);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing damage: {}", e.getMessage());
+        }
+    }
+
     private boolean allPlayersReady() {
         return players.keySet().stream()
-                .allMatch(playerId -> playerReadyStatus.getOrDefault(playerId, false));
+                .allMatch(username -> playerReadyStatus.getOrDefault(username, false));
     }
 
     private void startCountdown() {
@@ -361,6 +468,7 @@ public class GameRoom {
         logger.info("Starting countdown in room {}", mapId);
         gameState = GameState.COUNTDOWN;
         countdownSeconds = COUNTDOWN_DURATION;
+        lastCountdownUpdate = System.currentTimeMillis();
         broadcastCountdownStarted();
     }
 
@@ -384,8 +492,8 @@ public class GameRoom {
         message.put("maxPlayers", MAX_PLAYERS);
 
         Map<String, Boolean> readyStates = new HashMap<>();
-        players.keySet().forEach(playerId -> {
-            readyStates.put(playerId, playerReadyStatus.getOrDefault(playerId, false));
+        players.keySet().forEach(username -> {
+            readyStates.put(username, playerReadyStatus.getOrDefault(username, false));
         });
         message.put("readyStates", readyStates);
 
@@ -420,10 +528,30 @@ public class GameRoom {
     }
 
     private void broadcastGameStarted() {
+        logger.info("Broadcasting game_started to {} players", players.size());
         Map<String, Object> message = new HashMap<>();
         message.put("type", "game_started");
         message.put("gameStartTime", gameStartTime);
         message.put("gameDuration", GAME_DURATION_MS);
+
+        String json = JsonUtils.toJson(message);
+        logger.debug("Game started message: {}", json);
+        broadcast(json);
+        logger.info("Game started broadcast completed");
+    }
+
+    private void broadcastTimeRemaining() {
+        if (gameState != GameState.PLAYING) {
+            return;
+        }
+
+        long timeElapsed = System.currentTimeMillis() - gameStartTime;
+        long timeRemaining = Math.max(0, GAME_DURATION_MS - timeElapsed);
+
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "time_remaining");
+        message.put("timeRemaining", timeRemaining);
+        message.put("timeElapsed", timeElapsed);
 
         String json = JsonUtils.toJson(message);
         broadcast(json);
@@ -439,8 +567,8 @@ public class GameRoom {
         broadcast(json);
     }
 
-    private void sendPlayerList(String playerId) {
-        Session session = players.get(playerId);
+    private void sendPlayerList(String username) {
+        Session session = players.get(username);
         if (session == null) {
             return;
         }
@@ -453,16 +581,16 @@ public class GameRoom {
             message.put("players", playerList);
 
             String json = JsonUtils.toJson(message);
-            session.getBasicRemote().sendText(json);
-
-            sendGameState(playerId);
-        } catch (IOException e) {
-            logger.error("Error sending player list to {} on map {}: {}", playerId, mapId, e.getMessage());
+            queueMessage(username, json);
+            
+            sendGameState(username);
+        } catch (Exception e) {
+            logger.error("Error preparing player list for {} on map {}: {}", username, mapId, e.getMessage());
         }
     }
 
-    private void sendGameState(String playerId) {
-        Session session = players.get(playerId);
+    private void sendGameState(String username) {
+        Session session = players.get(username);
         if (session == null) {
             return;
         }
@@ -470,9 +598,9 @@ public class GameRoom {
         try {
             Map<String, Object> gameState = createGameStateMessage();
             String json = JsonUtils.toJson(gameState);
-            session.getBasicRemote().sendText(json);
-        } catch (IOException e) {
-            logger.error("Error sending game state to {} on map {}: {}", playerId, mapId, e.getMessage());
+            queueMessage(username, json);
+        } catch (Exception e) {
+            logger.error("Error preparing game state for {} on map {}: {}", username, mapId, e.getMessage());
         }
     }
 
@@ -480,14 +608,8 @@ public class GameRoom {
         try {
             Map<String, Object> gameState = createGameStateMessage();
             String json = JsonUtils.toJson(gameState);
-
-            for (Session session : players.values()) {
-                try {
-                    session.getBasicRemote().sendText(json);
-                } catch (IOException e) {
-                    logger.error("Error sending game state to player on map {}: {}", mapId, e.getMessage());
-                }
-            }
+            // Use our message queue system instead of direct sending
+            broadcast(json);
         } catch (Exception e) {
             logger.error("Error broadcasting game state on map {}: {}", mapId, e.getMessage());
         }
@@ -498,7 +620,7 @@ public class GameRoom {
         gameStateMsg.put("type", "game_state");
 
         Map<String, Object> states = new HashMap<>();
-        playerStates.forEach((id, state) -> {
+        playerStates.forEach((username, state) -> {
             Map<String, Object> playerData = new HashMap<>();
             playerData.put("x", state.getX());
             playerData.put("y", state.getY());
@@ -508,98 +630,62 @@ public class GameRoom {
             playerData.put("health", state.getHealth());
             playerData.put("isDead", state.isDead());
 
-            states.put(id, playerData);
+            states.put(username, playerData);
         });
         gameStateMsg.put("players", states);
 
         return gameStateMsg;
     }
 
-    private void broadcastPlayerJoined(String playerId) {
-        PlayerState state = playerStates.get(playerId);
+    private void broadcastPlayerJoined(String username) {
+        PlayerState state = playerStates.get(username);
         if (state == null) {
             return;
         }
 
         Map<String, Object> message = new HashMap<>();
         message.put("type", "player_joined");
-        message.put("playerId", playerId);
+        message.put("username", username);
         message.put("x", state.getX());
         message.put("y", state.getY());
         message.put("flipX", state.isFlipX());
 
         String json = JsonUtils.toJson(message);
-
-        broadcastExcept(json, playerId);
+        broadcastExcept(json, username);
     }
 
-    private void broadcastPlayerLeft(String playerId) {
+    private void broadcastPlayerLeft(String username) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "player_left");
-        message.put("playerId", playerId);
+        message.put("username", username);
 
         String json = JsonUtils.toJson(message);
         broadcast(json);
     }
 
-    private void broadcast(String message) {
-        for (Session session : players.values()) {
-            try {
-                session.getBasicRemote().sendText(message);
-            } catch (IOException e) {
-                logger.error("Error broadcasting player on map {}: {}", mapId, e.getMessage());
-            }
-        }
-    }
-
-    private void broadcastExcept(String message, String excludePlayerId) {
-        for (Map.Entry<String, Session> entry : players.entrySet()) {
-            if (!entry.getKey().equals(excludePlayerId)) {
-                Session session = entry.getValue();
-                if (session.isOpen()) {
-                    try {
-                        entry.getValue().getBasicRemote().sendText(message);
-                    } catch (IOException e) {
-                        logger.error("Error broadcasting message on map {}: {}", mapId, e.getMessage());
-                    } catch (IllegalStateException e) {
-                        logger.warn("Session is closed for player {} on map {}", entry.getKey(), mapId);
-                        handleBrokenSession(entry.getKey());
-                    }
-                } else {
-                    logger.debug("Skipping closed session for player {} on map {}", entry.getKey(), mapId);
-                    handleBrokenSession(entry.getKey());
-                }
-            }
-        }
-    }
-
-    private void handleBrokenSession(String playerId) {
-        players.remove(playerId);
-        playerStates.remove(playerId);
-        playerReadyStatus.remove(playerId);
-
-        if (gameState == GameState.COUNTDOWN && !allPlayersReady()) {
-            cancelCountdown();
-        } else if (gameState == GameState.PLAYING) {
-            checkGameEndConditions();
-        }
-
-        broadcastRoomStatus();
-    }
-
-    private void broadcastDamageEvent(String targetId, int amount, boolean died) {
+    private void broadcastDamageEvent(String targetUsername, int currentHealth, boolean died) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "player_damaged");
-        message.put("playerId", targetId);
-        message.put("damage", amount);
+        message.put("username", targetUsername);
+        message.put("currentHealth", currentHealth);
         message.put("died", died);
 
         String json = JsonUtils.toJson(message);
         broadcast(json);
     }
 
-    private void createProjectile(String ownerId, float x, float y, float directionX, float directionY) {
-        ProjectileState projectile = new ProjectileState(ownerId, x, y, directionX, directionY);
+    private void broadcastHealEvent(String username, int currentHealth) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "player_healed");
+        message.put("username", username);
+        message.put("currentHealth", currentHealth);
+
+        String json = JsonUtils.toJson(message);
+        broadcast(json);
+    }
+
+    private void createProjectile(String ownerUsername, float x, float y, float directionX, float directionY) {
+        ProjectileState projectile = new ProjectileState(ownerUsername, x, y, directionX, directionY);
         projectiles.add(projectile);
         broadcastProjectileCreated(projectile);
     }
@@ -627,15 +713,15 @@ public class GameRoom {
         broadcast(json);
     }
 
-    private void broadcastPlayerUpdate(String playerId) {
-        PlayerState state = playerStates.get(playerId);
+    private void broadcastPlayerUpdate(String username) {
+        PlayerState state = playerStates.get(username);
         if (state == null) {
             return;
         }
 
         Map<String, Object> message = new HashMap<>();
         message.put("type", "player_update");
-        message.put("playerId", playerId);
+        message.put("username", username);
         message.put("x", state.getX());
         message.put("y", state.getY());
         message.put("vx", state.getVx());
@@ -643,7 +729,121 @@ public class GameRoom {
         message.put("flipX", state.isFlipX());
 
         String json = JsonUtils.toJson(message);
-        broadcastExcept(json, playerId);
+        broadcastExcept(json, username);
+    }
+
+    private void queueMessage(String username, String message) {
+        // Get or create resources for this user
+        messageQueues.computeIfAbsent(username, k -> new LinkedBlockingQueue<>());
+        sendingInProgress.computeIfAbsent(username, k -> new AtomicBoolean(false));
+        playerExecutors.computeIfAbsent(username, k -> Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "WebSocket-Sender-" + username);
+            t.setDaemon(true);
+            return t;
+        }));
+        
+        // Add message to queue
+        BlockingQueue<String> queue = messageQueues.get(username);
+        if (queue.offer(message)) {
+            // Start processing if not already in progress
+            if (sendingInProgress.get(username).compareAndSet(false, true)) {
+                ExecutorService executor = playerExecutors.get(username);
+                if (executor != null && !executor.isShutdown()) {
+                    executor.submit(() -> processMessageQueue(username));
+                }
+            }
+        } else {
+            logger.warn("Message queue full for player {}, dropping message", username);
+        }
+    }
+    
+    private void processMessageQueue(String username) {
+        BlockingQueue<String> queue = messageQueues.get(username);
+        Session session = players.get(username);
+        
+        if (queue == null || session == null) {
+            sendingInProgress.get(username).set(false);
+            return;
+        }
+        
+        try {
+            while (!queue.isEmpty() && session.isOpen()) {
+                String message = queue.poll();
+                if (message != null) {
+                    try {
+                        // Use synchronous sending for guaranteed order
+                        session.getBasicRemote().sendText(message);
+                        logger.debug("Message sent to player: {}", username);
+                    } catch (IOException e) {
+                        logger.warn("Failed to send message to player {}: {}", username, e.getMessage());
+                        handleBrokenSession(username);
+                        break;
+                    } catch (IllegalStateException e) {
+                        logger.warn("Session in invalid state for player {}: {}", username, e.getMessage());
+                        handleBrokenSession(username);
+                        break;
+                    }
+                }
+            }
+        } finally {
+            sendingInProgress.get(username).set(false);
+            
+            // Check if more messages arrived while we were processing
+            if (!queue.isEmpty() && session.isOpen()) {
+                if (sendingInProgress.get(username).compareAndSet(false, true)) {
+                    ExecutorService executor = playerExecutors.get(username);
+                    if (executor != null && !executor.isShutdown()) {
+                        executor.submit(() -> processMessageQueue(username));
+                    }
+                }
+            }
+        }
+    }
+
+    private synchronized void broadcast(String message) {
+        logger.debug("Broadcasting to {} sessions: {}", players.size(), message.substring(0, Math.min(50, message.length())));
+        
+        // Create a copy of the players map to avoid concurrent modification
+        Map<String, Session> currentPlayers = new HashMap<>(players);
+        
+        for (String username : currentPlayers.keySet()) {
+            queueMessage(username, message);
+        }
+    }
+
+    private synchronized void broadcastExcept(String message, String excludeUsername) {
+        // Create a copy of the players map to avoid concurrent modification
+        Map<String, Session> currentPlayers = new HashMap<>(players);
+        
+        for (String username : currentPlayers.keySet()) {
+            if (!username.equals(excludeUsername)) {
+                queueMessage(username, message);
+            }
+        }
+    }
+
+    private void handleBrokenSession(String username) {
+        players.remove(username);
+        playerStates.remove(username);
+        playerReadyStatus.remove(username);
+        
+        // Clean up message queue resources
+        messageQueues.remove(username);
+        sendingInProgress.remove(username);
+        
+        // Shutdown player-specific executor
+        ExecutorService executor = playerExecutors.remove(username);
+        if (executor != null) {
+            executor.shutdown();
+        }
+
+        if (gameState == GameState.COUNTDOWN && !allPlayersReady()) {
+            cancelCountdown();
+        } else if (gameState == GameState.PLAYING) {
+            checkGameEndConditions();
+        }
+
+        broadcastRoomStatus();
     }
 
     // Getters
@@ -669,6 +869,8 @@ public class GameRoom {
 
     public void shutdown() {
         logger.info("Shutting down GameRoom for map: {}", mapId);
+        
+        // Shutdown game loop
         gameLoop.shutdown();
         try {
             if (!gameLoop.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -678,5 +880,23 @@ public class GameRoom {
             gameLoop.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        
+        // Shutdown all player executors
+        for (ExecutorService executor : playerExecutors.values()) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        
+        // Clear all message queues and executors
+        messageQueues.clear();
+        sendingInProgress.clear();
+        playerExecutors.clear();
     }
 }

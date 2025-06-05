@@ -1,7 +1,5 @@
 package fhv.omni.gamelogic.service.game;
 
-import fhv.omni.gamelogic.service.game.dtos.PlayerStateDTO;
-
 public class PlayerState {
     private float x;
     private float y;
@@ -33,10 +31,10 @@ public class PlayerState {
         if (health <= 0) {
             health = 0;
             isDead = true;
-            return true;
+            return true;    // Player died
         }
 
-        return false;
+        return false;       // Player survived
     }
 
     public boolean heal(int amount) {
@@ -45,14 +43,13 @@ public class PlayerState {
         }
 
         int previousHealth = health;
-
         health += amount;
 
-        if (isDead) {
-            isDead = false;
+        if (health > MAX_HEALTH) {
+            health = MAX_HEALTH;
         }
 
-        return health == MAX_HEALTH && previousHealth < MAX_HEALTH;
+        return health > previousHealth;
     }
 
     public void reset() {
@@ -112,6 +109,15 @@ public class PlayerState {
         return health;
     }
 
+    public void setHealth(int health) {
+        this.health = Math.max(0, Math.min(health, MAX_HEALTH));
+        if (this.health <= 0) {
+            this.isDead = true;
+        } else if (this.isDead && this.health > 0) {
+            this.isDead = false;
+        }
+    }
+
     public boolean isDead() {
         return isDead;
     }
@@ -121,5 +127,9 @@ public class PlayerState {
         if (dead) {
             health = 0;
         }
+    }
+
+    public int getMaxHealth() {
+        return MAX_HEALTH;
     }
 }

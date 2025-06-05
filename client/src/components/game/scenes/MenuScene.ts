@@ -10,6 +10,7 @@ export default class MenuScene extends Phaser.Scene {
     private collisionGroup: Phaser.Physics.Arcade.StaticGroup | undefined;
     private soundManager!: SoundManager;
     private triggerZones: Phaser.Physics.Arcade.Group | undefined;
+    private selectedMap: string | null = null;
 
     constructor() {
         super({key: 'MenuScene'});
@@ -78,6 +79,13 @@ export default class MenuScene extends Phaser.Scene {
         // Play background music with lowpass filter
         this.soundManager.playBackgroundMusic('menu_music');
         this.soundManager.setGain(0.1);
+
+        //TODO: MAYBE CHANGE
+        this.input.keyboard?.on('keydown-ENTER', () => {
+            if (this.selectedMap) {
+                this.loadGameplayScene(this.selectedMap);
+            }
+        })
     }
 
     update(): void {
@@ -144,31 +152,59 @@ export default class MenuScene extends Phaser.Scene {
 
             if (className.startsWith('map')) {
                 let difficultyText = '';
-                const textColor = '#ffffff';
+                let textColor = '#ffffff';
 
                 switch (className) {
                     case 'map1':
                         difficultyText = 'EASY';
+                        textColor = '#4ade80'; // Green
                         break;
                     case 'map2':
                         difficultyText = 'MEDIUM';
+                        textColor = '#fbbf24'; // Yellow
                         break;
                     case 'map3':
                         difficultyText = 'HARD';
+                        textColor = '#ef4444'; // Red
                         break;
                 }
 
                 if (difficultyText) {
-                    const text = this.add.text(x + width / 2, y, difficultyText, {
+                    const mapLabel = this.add.text(x + width / 2, y - 10,`${className.toUpperCase()}`, {
                         fontFamily: 'gameovercre',
-                        fontSize: '24px',
+                        fontSize: '20px',
                         color: textColor,
                         stroke: '#000000',
                         strokeThickness: 4
                     });
-                    text.setOrigin(0.5, 1);
-                    text.setDepth(10);
-                    text.setScale(0.5);
+                    mapLabel.setOrigin(0.5, 1);
+                    mapLabel.setDepth(10);
+                    mapLabel.setScale(0.5);
+
+                    const difficultyLabel = this.add.text(x + width / 2, y + 5, difficultyText, {
+                        fontFamily: 'gameovercre',
+                        fontSize: '26px',
+                        color: textColor,
+                        stroke: '#000000',
+                        strokeThickness: 3
+                    });
+                    difficultyLabel.setOrigin(0.5, 1);
+                    difficultyLabel.setDepth(10);
+                    difficultyLabel.setScale(0.4);
+
+                    const instructionText = this.add.text(x + width / 2, y + height + 10, 'Press ENTER to join', {
+                        fontFamily: 'gameovercre',
+                        fontSize: '14px',
+                        color: '#ffffff',
+                        stroke: '#000000',
+                        strokeThickness: 2
+                    });
+                    instructionText.setOrigin(0.5, 0);
+                    instructionText.setDepth(10);
+                    instructionText.setScale(0.3);
+                    instructionText.setVisible(false);
+
+                    zone.setData('instructionText', instructionText);
                 }
             }
 
@@ -184,6 +220,7 @@ export default class MenuScene extends Phaser.Scene {
         trigger: Phaser.GameObjects.GameObject
     ): void {
         const triggerType = trigger.getData('triggerType');
+        const instructionText = trigger.getData('instructionText');
 
         switch (triggerType) {
             case 'shop':
@@ -191,18 +228,35 @@ export default class MenuScene extends Phaser.Scene {
                 break;
 
             case 'map1':
-                this.loadGameplayScene('map1');
-                trigger.destroy();
-                break;
-
             case 'map2':
-                this.loadGameplayScene('map2');
-                trigger.destroy();
-                break;
-
             case 'map3':
-                this.loadGameplayScene('map3');
-                trigger.destroy();
+                if (instructionText) {
+                    instructionText.setVisible(true);
+                    this.tweens.add({
+                        targets: instructionText,
+                        alpha: { from: 0, to: 1 },
+                        duration: 300,
+                        ease: 'Power2'
+                    });
+                }
+
+                this.selectedMap = triggerType;
+
+                this.setupTriggerExit(player, trigger, () => {
+                    if (instructionText) {
+                        this.tweens.add({
+                            targets: instructionText,
+                            alpha: 0,
+                            duration: 300,
+                            ease: 'Power2',
+                            onComplete: () => {
+                                instructionText.setVisible(false);
+                                instructionText.setAlpha(1);
+                            }
+                        });
+                    }
+                    this.selectedMap = null;
+                });
                 break;
 
             default:
@@ -210,10 +264,46 @@ export default class MenuScene extends Phaser.Scene {
         }
     }
 
+    private setupTriggerExit(
+        player: Phaser.GameObjects.GameObject,
+        trigger: Phaser.GameObjects.Zone,
+        exitCallback: () => void
+    ): void {
+        const playerSprite = player as Phaser.Physics.Arcade.Sprite;
+        const triggerZone = trigger as Phaser.GameObjects.Zone;
+
+        const exitTimer = this.time.addEvent({
+            delay: 100,
+            callback: () => {
+                if (!playerSprite.body || !triggerZone.body) {
+                    exitCallback();
+                    exitTimer.destroy();
+                    return;
+                }
+
+                const triggerBounds = triggerZone.getBounds();
+                const playerBounds = playerSprite.getBounds();
+
+                const stillOverlapping = Phaser.Geom.Rectangle.Overlaps(triggerBounds, playerBounds);
+
+                if (!stillOverlapping) {
+                    exitCallback();
+                    exitTimer.destroy();
+                }
+            },
+            loop: true
+        });
+    }
+
     // Load the GameplayScene with the specified map
     private loadGameplayScene(mapKey: string): void {
+        console.log(`Loading gamplay scene with map: ${mapKey}`);
+
         // Clean up current scene
         this.shutdown();
+
+        // Store the selected map for the Websocket connection
+        sessionStorage.setItem('selectedMapKey', mapKey);
 
         // Use the event bus to signal game mode change and pass map data
         eventBus.emit('startGame', {mapKey});

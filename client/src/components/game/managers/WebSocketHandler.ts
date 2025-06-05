@@ -3,6 +3,7 @@ import PlayerManager from './PlayerManager';
 import NotificationManager from './NotificationManager';
 import ProjectileManager from './ProjectileManager';
 import SpawnPointManager from './SpawnPointManager.ts';
+import eventBus from "../../../utils/eventBus.ts";
 
 export default class WebSocketHandler {
     private websocket: WebSocketService;
@@ -49,10 +50,6 @@ export default class WebSocketHandler {
         return this.websocket.isSocketConnected();
     }
 
-    /**
-     * Redirect to the login screen
-     * @private
-     */
     private redirectToLogin(): void {
         // Use setTimeout to ensure this happens after current execution context
         setTimeout(() => {
@@ -74,6 +71,16 @@ export default class WebSocketHandler {
         this.websocket.onMessageType('player_healed', this.handlePlayerHealed.bind(this));
         this.websocket.onMessageType('projectile_created', this.handleProjectileCreated.bind(this));
         this.websocket.onMessageType('projectile_removed', this.handleProjectileRemoved.bind(this));
+
+        this.websocket.onMessageType('room_status', this.handleRoomStatus.bind(this));
+        this.websocket.onMessageType('countdown_started', this.handleCountdownStarted.bind(this));
+        this.websocket.onMessageType('countdown', this.handleCountdown.bind(this));
+        this.websocket.onMessageType('countdown_cancelled', this.handleCountdownCancelled.bind(this));
+        this.websocket.onMessageType('game_started', this.handleGameStarted.bind(this));
+        this.websocket.onMessageType('game_ended', this.handleGameEnded.bind(this));
+        this.websocket.onMessageType('time_remaining', this.handleTimeRemaining.bind(this));
+
+        this.websocket.onMessageType('connection_failed', this.handleConnectionFailed.bind(this));
     }
 
     private handleProjectileCreated(data: any): void {
@@ -173,6 +180,60 @@ export default class WebSocketHandler {
                 }
             });
         }
+    }
+
+    private handleRoomStatus(data: any): void {
+        console.log('Room status:', data);
+
+        eventBus.emit('room_status', data);
+    }
+
+    private handleCountdownStarted(data: any): void {
+        console.log('Countdown started:', data);
+
+        eventBus.emit('countdown_started', data);
+    }
+
+    private handleCountdown(data: any): void {
+        console.log('Countdown:', data.seconds);
+
+        eventBus.emit('countdown', data);
+    }
+
+    private handleCountdownCancelled(data: any): void {
+        console.log('Countdown cancelled:', data);
+        this.notificationManager.showNotification(`Game start cancelled - waiting for players`);
+
+        eventBus.emit('countdown_cancelled', data);
+    }
+
+    private handleGameStarted(data: any): void {
+        console.log('Game started:', data);
+        this.notificationManager.showNotification(`Game started! Good luck!`);
+
+        eventBus.emit('game_started', data);
+    }
+
+    private handleTimeRemaining(data: any): void {
+        eventBus.emit('time_remaining', data);
+    }
+
+    private handleGameEnded(data: any): void {
+        console.log('Game ended:', data);
+        this.notificationManager.showNotification(`Game ended: ${data.reason}`);
+
+        eventBus.emit('game_ended', data);
+    }
+
+    private handleConnectionFailed(data: any): void {
+        console.error('Connection failed:', data);
+        this.notificationManager.showNotification(`Connection failed: ${data.message}`);
+
+        setTimeout(() =>{
+            if (typeof window !== 'undefined') {
+                window.location.href = '/';
+            }
+        }, 3000);
     }
 
     private getPlayerUsernames(): string[] {
