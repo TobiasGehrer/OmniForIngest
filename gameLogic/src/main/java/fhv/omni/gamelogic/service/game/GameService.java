@@ -20,45 +20,18 @@ import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 public class GameService {
     private final Logger logger = LoggerFactory.getLogger(GameService.class);
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
-
     private final ScheduledExecutorService cleanupService = Executors.newSingleThreadScheduledExecutor();
 
     public GameService() {
-        // Run cleanup every 5 minutes to remove empty rooms
         cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 5, 5, TimeUnit.MINUTES);
     }
 
     public boolean connect(String username, String mapId, Session session) {
-        logger.info("Connectin player {} to map {}", username, mapId);
-
         GameRoom room = gameRooms.computeIfAbsent(mapId, k -> new GameRoom(mapId));
         boolean connected = room.connect(username, session);
 
-        if (connected) {
-            logger.info("Player {} connected to map {}. Room now has {} players",
-                    username, mapId, room.getPlayerCount());
-        } else {
-            try {
-                Map<String, Object> errorMessage = new HashMap<>();
-                errorMessage.put("type", "connection_failed");
-
-                if (room.isFull()) {
-                    errorMessage.put("reason", "room_full");
-                    errorMessage.put("message", "Room is full (max 4 players)");
-                } else if (room.getGameState() == GameState.PLAYING || room.getGameState() == GameState.COUNTDOWN) {
-                    errorMessage.put("reason", "game_in_progress");
-                    errorMessage.put("message", "Cannot join - game is in progress");
-                } else {
-                    errorMessage.put("reason", "unknow");
-                    errorMessage.put("message", "Unable to join room");
-                }
-
-                String json = objectMapper.writeValueAsString(errorMessage);
-                session.getBasicRemote().sendText(json);
-                session.close();
-            } catch (IOException e) {
-                logger.error("Error sending connection failed message to player {}: {}", username, e.getMessage());
-            }
+        if (!connected) {
+            sendConnectionFailedMessage(session, room);
         }
 
         return connected;
@@ -68,8 +41,6 @@ public class GameService {
         GameRoom room = gameRooms.get(mapId);
         if (room != null) {
             room.disconnect(username);
-            logger.info("Player {} disconnected from map {}. Room now has {} players.",
-                    username, mapId, room.getPlayerCount());
         }
     }
 
@@ -79,8 +50,6 @@ public class GameService {
 
         if (username != null && mapId != null) {
             disconnect(username, mapId);
-        } else {
-            logger.warn("Could not find username or mapId for session during disconnect");
         }
     }
 
@@ -88,8 +57,6 @@ public class GameService {
         GameRoom room = gameRooms.get(mapId);
         if (room != null) {
             room.handleMessage(username, messageType, data);
-        } else {
-            logger.warn("Received message for non-existent room: {}", mapId);
         }
     }
 
@@ -103,12 +70,6 @@ public class GameService {
                 .sum();
     }
 
-    public Map<String, Integer> getRoomStats() {
-        Map<String, Integer> stats = new ConcurrentHashMap<>();
-        gameRooms.forEach((mapId, room) -> stats.put(mapId, room.getPlayerCount()));
-        return stats;
-    }
-
     public Map<String, Object> getDetailedRoomStats() {
         Map<String, Object> stats = new ConcurrentHashMap<>();
         gameRooms.forEach((mapId, room) -> {
@@ -116,38 +77,52 @@ public class GameService {
             roomInfo.put("playerCount", room.getPlayerCount());
             roomInfo.put("maxPlayers", 4);
             roomInfo.put("gameState", room.getGameState().toString());
-            roomInfo.put("isFUll", room.isFull());
+            roomInfo.put("isFull", room.isFull());
             stats.put(mapId, roomInfo);
         });
 
         return stats;
     }
 
+    private void sendConnectionFailedMessage(Session session, GameRoom room) {
+        try {
+            Map<String, Object> errorMessage = new HashMap<>();
+            errorMessage.put("type", "connection_failed");
+
+            if (room.isFull()) {
+                errorMessage.put("reason", "room_full");
+                errorMessage.put("message", "Room is full (max 4 players");
+            } else if (room.getGameState() == GameState.PLAYING || room.getGameState() == GameState.COUNTDOWN) {
+                errorMessage.put("reason", "game_in_progress");
+                errorMessage.put("message", "Game is in progress");
+            } else {
+                errorMessage.put("reason", "unknown");
+                errorMessage.put("message", "Unable to join room");
+            }
+
+            String json = objectMapper.writeValueAsString(errorMessage);
+            session.getBasicRemote().sendText(json);
+            session.close();
+        } catch (IOException e) {
+            logger.error("Error sending connection failed message: {}", e.getMessage());
+        }
+    }
+
     private void cleanupEmptyRooms() {
         gameRooms.entrySet().removeIf(entry -> {
             GameRoom room = entry.getValue();
             if (room.isEmpty()) {
-                logger.info("Cleaning up empty room for map: {}", entry.getKey());
                 room.shutdown();
                 return true;
             }
             return false;
         });
-
-        if (!gameRooms.isEmpty()) {
-            logger.debug("Room cleanup completed. Active rooms: {}, Total players: {}",
-                    getActiveRoomCount(), getTotalPlayerCount());
-        }
     }
 
     public void shutdown() {
-        logger.info("Shutting down GameService...");
-
-        // Shutdown all rooms
         gameRooms.values().forEach(GameRoom::shutdown);
         gameRooms.clear();
 
-        // Shutdown cleanup service
         cleanupService.shutdown();
         try {
             if (!cleanupService.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -157,7 +132,5 @@ public class GameService {
             cleanupService.shutdownNow();
             Thread.currentThread().interrupt();
         }
-
-        logger.info("GameService shutdown completed.");
     }
 }

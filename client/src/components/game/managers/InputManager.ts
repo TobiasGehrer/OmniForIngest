@@ -59,100 +59,99 @@ export default class InputManager {
     }
 
     update(time: number): void {
-        if (this.keys && this.inputsEnabled) {
-            const localPlayer = this.playerManager.getLocalPlayer();
-            if (!localPlayer) return;
+        if (!this.keys || ! this.inputsEnabled) return;
 
-            // Get physics body from sprite
-            const body = localPlayer.body as Phaser.Physics.Arcade.Body;
-            if (!body) return;
+        const localPlayer = this.playerManager.getLocalPlayer();
+        if (!localPlayer) return;
 
-            const isDead = this.playerManager.isLocalPlayerDead();
+        // Get physics body from sprite
+        const body = localPlayer.body as Phaser.Physics.Arcade.Body;
+        if (!body) return;
 
-            // Only process movement if player is alive
-            if (!isDead) {
-                // Handle movement with physics
-                let vx: number = 0;
-                let vy: number = 0;
+        const isDead = this.playerManager.isLocalPlayerDead();
 
-                if (this.keys.a.isDown) vx -= 1;
-                if (this.keys.d.isDown) vx += 1;
-                if (this.keys.w.isDown) vy -= 1;
-                if (this.keys.s.isDown) vy += 1;
+        // Only process movement if player is alive
+        if (!isDead) {
+            this.handleMovement(body, localPlayer);
+        } else {
+            // If player is dead, stop all movement
+            body.setVelocity(0, 0);
 
-                // Normalize diagonal movement
-                if (vx !== 0 && vy !== 0) {
-                    const length = Math.sqrt(vx * vx + vy * vy);
-                    vx = vx / length;
-                    vy = vy / length;
-                }
-
-                // Apply velocity to the physics body
-                body.setVelocity(vx * this.playerSpeed, vy * this.playerSpeed);
-
-                // Update animations based on movement
-                if (vx !== 0 || vy !== 0) {
-                    localPlayer.play('walk', true);
-                } else {
-                    localPlayer.play('idle', true);
-                }
-            } else {
-                // If player is dead, stop all movement
-                body.setVelocity(0, 0);
-
-                // Check if the current animation is not death before forcing it
-                if (localPlayer.anims.currentAnim && localPlayer.anims.currentAnim.key !== 'death') {
-                    localPlayer.play('death', true);
-                }
+            // Check if the current animation is not death before forcing it
+            if (localPlayer.anims.currentAnim?.key !== 'death') {
+                localPlayer.play('death', true);
             }
+        }
 
-            this.updateCursorPosition();
-            this.updateSpriteDirection();
+        this.updateCursorPosition();
+        this.updateSpriteDirection();
 
-            // Send position update
-            if (time - this.lastPositionSent > this.positionUpdateInterval) {
-                // Only send if WebSocket is connected
-                if (this.websocket.isSocketConnected()) {
-                    this.websocket.sendMessage('position', {
-                        x: localPlayer.x,
-                        y: localPlayer.y,
-                        vx: isDead ? 0 : body.velocity.x / this.playerSpeed, // Normalized velocity for animation
-                        vy: isDead ? 0 : body.velocity.y / this.playerSpeed, // Normalized velocity for animation
-                        flipX: localPlayer.flipX
-                    });
-                }
-                this.lastPositionSent = time;
+        // Send position update
+        if (time - this.lastPositionSent > this.positionUpdateInterval) {
+            // Only send if WebSocket is connected
+            if (this.websocket.isSocketConnected()) {
+                this.websocket.sendMessage('position', {
+                    x: localPlayer.x,
+                    y: localPlayer.y,
+                    vx: isDead ? 0 : body.velocity.x / this.playerSpeed, // Normalized velocity for animation
+                    vy: isDead ? 0 : body.velocity.y / this.playerSpeed, // Normalized velocity for animation
+                    flipX: localPlayer.flipX
+                });
             }
+            this.lastPositionSent = time;
+        }
 
-            // Handle attack input
-            if (this.keys.space.isDown && time - this.lastAttackSent > this.attackCooldown) {
-                // Check if local player is dead
-                if (!isDead) {
-                    // Calculate direction vector from player to cursor
-                    const directionX = this.cursorPosition.x - localPlayer.x;
-                    const directionY = this.cursorPosition.y - localPlayer.y;
+        // Handle attack input
+        if (this.keys.space.isDown && time - this.lastAttackSent > this.attackCooldown && !isDead) {
+            this.handleAttack(localPlayer, time);
+        }
+    }
 
-                    // Normalize the direction vector
-                    const length = Math.sqrt(directionX * directionX + directionY * directionY);
-                    const normalizedDirectionX = directionX / length;
-                    const normalizedDirectionY = directionY / length;
+    private handleMovement(body: Phaser.Physics.Arcade.Body, localPlayer: Phaser.GameObjects.Sprite): void {
+        let vx: number = 0;
+        let vy: number = 0;
 
-                    // Send attack message with direction
-                    if (this.websocket.isSocketConnected()) {
-                        this.websocket.sendMessage('attack', {
-                            directionX: normalizedDirectionX,
-                            directionY: normalizedDirectionY
-                        });
-                    }
-                    this.lastAttackSent = time;
+        if (this.keys!.a.isDown) vx -= 1;
+        if (this.keys!.d.isDown) vx += 1;
+        if (this.keys!.w.isDown) vy -= 1;
+        if (this.keys!.s.isDown) vy += 1;
 
-                    // Play attack sound
-                    if (this.scene.sound && this.scene.sound.add) {
-                        const attackSound = this.scene.sound.add('attack_fx', {volume: 0.3});
-                        attackSound.play();
-                    }
-                }
-            }
+        // Normalize diagonal movement
+        if (vx !== 0 && vy !== 0) {
+            const length = Math.sqrt(vx * vx + vy * vy)
+            vx = vx / length;
+            vy = vy / length;
+        }
+
+        body.setVelocity(vx * this.playerSpeed, vy * this.playerSpeed)
+
+        // Update animations
+        if (vx !== 0 || vy !== 0) {
+            localPlayer.play('walk', true);
+        } else {
+            localPlayer.play('idle', true);
+        }
+    }
+
+    private handleAttack(localPlayer: Phaser.GameObjects.Sprite, time: number): void {
+        const directionX = this.cursorPosition.x - localPlayer.x;
+        const directionY = this.cursorPosition.y - localPlayer.y;
+
+        const length = Math.sqrt(directionX * directionX + directionY * directionY);
+        const normalizedDirectionX = directionX / length;
+        const normalizedDirectionY = directionY / length;
+
+        if (this.websocket.isSocketConnected()) {
+            this.websocket.sendMessage('attack', {
+                directionX: normalizedDirectionX,
+                directionY: normalizedDirectionY
+            });
+        }
+        this.lastAttackSent = time;
+
+        if (this.scene.sound && this.scene.sound.add) {
+            const attackSound = this.scene.sound.add('attack_fx', {volume: 0.3});
+            attackSound.play();
         }
     }
 

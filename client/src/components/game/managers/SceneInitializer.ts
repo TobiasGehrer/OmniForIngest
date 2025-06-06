@@ -92,8 +92,6 @@ export default class SceneInitializer {
             const storedMapKey = sessionStorage.getItem('selectedMapKey');
             if (storedMapKey) {
                 mapKey = storedMapKey;
-                // Clear it after use to avoid persistence between sessions
-                sessionStorage.removeItem('selectedMapKey');
             }
         } catch (e) {
             console.warn('Could not access sessionStorage:', e);

@@ -79,13 +79,6 @@ export default class MenuScene extends Phaser.Scene {
         // Play background music with lowpass filter
         this.soundManager.playBackgroundMusic('menu_music');
         this.soundManager.setGain(0.1);
-
-        //TODO: MAYBE CHANGE
-        this.input.keyboard?.on('keydown-ENTER', () => {
-            if (this.selectedMap) {
-                this.loadGameplayScene(this.selectedMap);
-            }
-        })
     }
 
     update(): void {
@@ -157,54 +150,26 @@ export default class MenuScene extends Phaser.Scene {
                 switch (className) {
                     case 'map1':
                         difficultyText = 'EASY';
-                        textColor = '#4ade80'; // Green
                         break;
                     case 'map2':
                         difficultyText = 'MEDIUM';
-                        textColor = '#fbbf24'; // Yellow
                         break;
                     case 'map3':
                         difficultyText = 'HARD';
-                        textColor = '#ef4444'; // Red
                         break;
                 }
 
                 if (difficultyText) {
-                    const mapLabel = this.add.text(x + width / 2, y - 10,`${className.toUpperCase()}`, {
+                    const text = this.add.text(x + width / 2, y - 10, difficultyText, {
                         fontFamily: 'gameovercre',
-                        fontSize: '20px',
+                        fontSize: '24px',
                         color: textColor,
                         stroke: '#000000',
                         strokeThickness: 4
                     });
-                    mapLabel.setOrigin(0.5, 1);
-                    mapLabel.setDepth(10);
-                    mapLabel.setScale(0.5);
-
-                    const difficultyLabel = this.add.text(x + width / 2, y + 5, difficultyText, {
-                        fontFamily: 'gameovercre',
-                        fontSize: '26px',
-                        color: textColor,
-                        stroke: '#000000',
-                        strokeThickness: 3
-                    });
-                    difficultyLabel.setOrigin(0.5, 1);
-                    difficultyLabel.setDepth(10);
-                    difficultyLabel.setScale(0.4);
-
-                    const instructionText = this.add.text(x + width / 2, y + height + 10, 'Press ENTER to join', {
-                        fontFamily: 'gameovercre',
-                        fontSize: '14px',
-                        color: '#ffffff',
-                        stroke: '#000000',
-                        strokeThickness: 2
-                    });
-                    instructionText.setOrigin(0.5, 0);
-                    instructionText.setDepth(10);
-                    instructionText.setScale(0.3);
-                    instructionText.setVisible(false);
-
-                    zone.setData('instructionText', instructionText);
+                    text.setOrigin(0.5, 1);
+                    text.setDepth(10);
+                    text.setScale(0.5);
                 }
             }
 
@@ -220,7 +185,6 @@ export default class MenuScene extends Phaser.Scene {
         trigger: Phaser.GameObjects.GameObject
     ): void {
         const triggerType = trigger.getData('triggerType');
-        const instructionText = trigger.getData('instructionText');
 
         switch (triggerType) {
             case 'shop':
@@ -230,32 +194,17 @@ export default class MenuScene extends Phaser.Scene {
             case 'map1':
             case 'map2':
             case 'map3':
-                if (instructionText) {
-                    instructionText.setVisible(true);
-                    this.tweens.add({
-                        targets: instructionText,
-                        alpha: { from: 0, to: 1 },
-                        duration: 300,
-                        ease: 'Power2'
-                    });
-                }
-
                 this.selectedMap = triggerType;
 
                 this.setupTriggerExit(player, trigger, () => {
-                    if (instructionText) {
-                        this.tweens.add({
-                            targets: instructionText,
-                            alpha: 0,
-                            duration: 300,
-                            ease: 'Power2',
-                            onComplete: () => {
-                                instructionText.setVisible(false);
-                                instructionText.setAlpha(1);
-                            }
-                        });
-                    }
                     this.selectedMap = null;
+                })
+
+                // Add a small delay before allowing map loading to prevent accidental triggers
+                this.time.delayedCall(500, () => {
+                    if (this.selectedMap === triggerType) {
+                        this.loadGameplayScene(triggerType);
+                    }
                 });
                 break;
 
