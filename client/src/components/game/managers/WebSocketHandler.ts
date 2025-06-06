@@ -81,6 +81,7 @@ export default class WebSocketHandler {
         this.websocket.onMessageType('time_remaining', this.handleTimeRemaining.bind(this));
 
         this.websocket.onMessageType('connection_failed', this.handleConnectionFailed.bind(this));
+        this.websocket.onMessageType('room_shutdown', this.handleRoomShutdown.bind(this));
     }
 
     private handleProjectileCreated(data: any): void {
@@ -209,7 +210,6 @@ export default class WebSocketHandler {
 
     private handleGameStarted(data: any): void {
         console.log('Game started:', data);
-        this.notificationManager.showNotification(`Game started! Good luck!`);
 
         eventBus.emit('game_started', data);
     }
@@ -220,7 +220,6 @@ export default class WebSocketHandler {
 
     private handleGameEnded(data: any): void {
         console.log('Game ended:', data);
-        this.notificationManager.showNotification(`Game ended: ${data.reason}`);
 
         eventBus.emit('game_ended', data);
     }
@@ -234,6 +233,15 @@ export default class WebSocketHandler {
                 window.location.href = '/';
             }
         }, 3000);
+    }
+
+    private handleRoomShutdown(data: any): void {
+        console.log('Room shutdown:', data);
+        this.notificationManager.showNotification(`${data.reason || 'Room is shutting down'}`);
+
+        setTimeout(() =>{
+            eventBus.emit('backToMenu');
+        }, 2000);
     }
 
     private getPlayerUsernames(): string[] {

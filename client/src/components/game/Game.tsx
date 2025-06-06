@@ -24,6 +24,7 @@ const Game: React.FC<GameProps> = () => {
     const gameInstance = useRef<Phaser.Game | null>(null);
     const [fetchedUserName, setFetchedUserName] = useState<string>('Unknown');
     const [isUsernameFetched, setIsUsernameFetched] = useState<boolean>(false);
+    const websocketService = useRef<WebSocketService>(WebSocketService.getInstance());
 
     useEffect(() => {
         const fetchUserName = async () => {
@@ -40,7 +41,7 @@ const Game: React.FC<GameProps> = () => {
                     const data = await response.json();
                     if (data.username) {
                         // Set username in WebSocketService
-                        WebSocketService.getInstance().setUsername(data.username);
+                        websocketService.current.setUsername(data.username);
                         setFetchedUserName(data.username);
                         setIsUsernameFetched(true);
                         console.log('Username set for WebSocket:', data.username);
@@ -55,7 +56,7 @@ const Game: React.FC<GameProps> = () => {
             } catch (error) {
                 console.error('Error fetching username:', error);
                 // Fall back to using a default username
-                WebSocketService.getInstance().setUsername('Unknown');
+                websocketService.current.setUsername('Unknown');
                 setFetchedUserName('Unknown');
                 setIsUsernameFetched(true);
             }
@@ -84,6 +85,17 @@ const Game: React.FC<GameProps> = () => {
             eventBus.off('startGame', handleStartGame);
             eventBus.off('backToMenu', handleBackToMenu);
         };
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            console.log('Game component unmounting - cleaning up websocket');
+            websocketService.current.shutdown();
+
+            if (gameInstance.current) {
+                gameInstance.current.destroy(true);
+            }
+        }
     }, []);
 
     useEffect(() => {

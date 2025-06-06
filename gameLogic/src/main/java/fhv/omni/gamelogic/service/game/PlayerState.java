@@ -21,7 +21,7 @@ public class PlayerState {
         this.isDead = false;
     }
 
-    public boolean takeDamage(int damage) {
+    public synchronized boolean takeDamage(int damage) {
         if (isDead) {
             return false;
         }

@@ -21,8 +21,8 @@ export default class WebSocketService {
     private connectionTimeoutMs: number = 5000;
     private currentMap: string = 'map1';
     private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-    //TODO: Not sure if gameState is even needed here
     private gameState: string = 'WAITING';
+    private isShuttingDown: boolean = false;
 
     public static getInstance(): WebSocketService {
         if (!WebSocketService.instance) {
@@ -35,9 +35,9 @@ export default class WebSocketService {
     private setupVisibilityHandling(): void {
         if (typeof document !== 'undefined') {
             document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible' && !this.isConnected) {
+                if (document.visibilityState === 'visible' && !this.isConnected && !this.isShuttingDown) {
                     setTimeout(() => {
-                        if (!this.isConnected) {
+                        if (!this.isConnected && !this.isShuttingDown) {
                             this.connect();
                         }
                     }, 1000);
@@ -65,13 +65,28 @@ export default class WebSocketService {
         this.gameState = gameState;
     }
 
+    /**
+     * Reset the shutdown state - call this when starting a new game mode
+     */
+    public resetShutdownState(): void {
+        console.log('Resetting WebSocket shutdown state');
+        this.isShuttingDown = false;
+    }
+
     public connect(serverUrl?: string, mapKey?: string): void {
+        // Reset shutdown state when explicitly connecting
+        if (this.isShuttingDown) {
+            console.log('WebSocket was in shutdown state, resetting for new connection');
+            this.isShuttingDown = false;
+        }
+
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
 
         if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+            console.log('WebSocket already connected or connecting');
             return;
         }
 
@@ -86,17 +101,21 @@ export default class WebSocketService {
         const urlToUse = serverUrl || this.serverUrl;
         this.url = `${urlToUse}?token=${encodeURIComponent(this.username)}&map=${encodeURIComponent(selectedMap)}`;
 
+        console.log(`Attempting WebSocket connection to: ${this.url}`);
+
         try {
             this.socket = new WebSocket(this.url);
 
             this.connectionTimeout = setTimeout(() => {
                 if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+                    console.warn('WebSocket connection timeout');
                     this.socket.close();
                     this.handleReconnect();
                 }
             }, this.connectionTimeoutMs);
 
             this.socket.onopen = () => {
+                console.log('WebSocket connection opened successfully');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
 
@@ -117,30 +136,40 @@ export default class WebSocketService {
                 this.isConnected = false;
                 this.stopHeartbeat();
 
-                if (event.code === 1000) {
-                    // Normal closure - likely due to page visibility, keep game state
-                } else {
-                    this.setGameState('WAITING');
-                }
+                console.log('WebSocket closed:', event.code, event.reason);
 
                 if (this.connectionTimeout) {
                     clearTimeout(this.connectionTimeout);
                     this.connectionTimeout = null;
                 }
 
-                if (event.code !== 1000) {
+                if (event.code === 1000) {
+                    // Normal closure
+                    console.log('WebSocket closed normally');
+                } else if (event.code === 1001) {
+                    console.log('WebSocket closed due to page navigation');
+                } else if (this.isShuttingDown) {
+                    console.log('WebSocket closed due to shutdown');
+                } else {
+                    console.warn('WebSocket closed unexpectedly, attempting reconnect');
                     this.handleReconnect();
                 }
             };
 
             this.socket.onerror = (error) => {
-                console.error('[WebSocket] Error:', error)
+                console.error('[WebSocket] Error:', error);
             };
 
             this.socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     this.updateGameStateFromMessage(data);
+
+                    if (data.type === 'room_shutdown') {
+                        console.log('Room shutdown message received:', data.reason);
+                        this.handleRoomShutdown();
+                        return;
+                    }
 
                     if (data.type && this.messageTypeHandlers.has(data.type)) {
                         const handlers = this.messageTypeHandlers.get(data.type);
@@ -159,6 +188,8 @@ export default class WebSocketService {
     }
 
     public disconnect(): void {
+        console.log('Disconnecting WebSocket');
+
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
@@ -173,15 +204,48 @@ export default class WebSocketService {
         this.reconnectAttempts = 0;
 
         if (this.socket) {
-            this.socket.close(1000, 'Normal closure');
+            if (this.socket.readyState === WebSocket.OPEN) {
+                try {
+                    this.socket.close(1000, 'Client disconnect');
+                } catch (error) {
+                    console.warn('Error during graceful close:', error);
+                    this.socket.close();
+                }
+            } else {
+                this.socket.close();
+            }
             this.socket = null;
         }
-
         this.isConnected = false;
     }
 
+    /**
+     * Complete shutdown - should only be called when the component is unmounting
+     */
+    public shutdown(): void {
+        console.log('Shutting down WebSocket service completely');
+        this.isShuttingDown = true;
+        this.disconnect();
+    }
+
+    /**
+     * Handle room shutdown from server - temporary shutdown for room cleanup
+     */
+    private handleRoomShutdown(): void {
+        console.log('Handling room shutdown from server');
+        // Temporarily set shutdown state
+        this.isShuttingDown = true;
+        this.disconnect();
+
+        // Reset shutdown state after a delay to allow for reconnection
+        setTimeout(() => {
+            console.log('Resetting shutdown state after room shutdown');
+            this.isShuttingDown = false;
+        }, 3000);
+    }
+
     public send(data: any): boolean {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && !this.isShuttingDown) {
             try {
                 const message = {
                     ...data,
@@ -194,10 +258,10 @@ export default class WebSocketService {
                 return false;
             }
         } else {
-            if (!this.socket || this.socket.readyState === WebSocket.CLOSED || this.socket.readyState === WebSocket.CLOSING) {
+            if (!this.isShuttingDown && (!this.socket || this.socket.readyState === WebSocket.CLOSED || this.socket.readyState === WebSocket.CLOSING)) {
+                console.log('WebSocket not connected, attempting to reconnect...');
                 this.connect();
             }
-
             return false;
         }
     }
@@ -211,7 +275,7 @@ export default class WebSocketService {
     }
 
     public isSocketConnected(): boolean {
-        return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
+        return this.isConnected && this.socket?.readyState === WebSocket.OPEN && !this.isShuttingDown;
     }
 
     public onMessageType(type: string, handler: (data: any) => void): void {
@@ -248,6 +312,18 @@ export default class WebSocketService {
         });
     }
 
+    public getDebugInfo(): object {
+        return {
+            isConnected: this.isConnected,
+            isShuttingDown: this.isShuttingDown,
+            socketState: this.socket?.readyState,
+            username: this.username,
+            currentMap: this.currentMap,
+            gameState: this.gameState,
+            reconnectAttempts: this.reconnectAttempts
+        };
+    }
+
     private getSelectedMapFromStorage(): string | null {
         try {
             return sessionStorage.getItem('selectedMapKey');
@@ -257,11 +333,22 @@ export default class WebSocketService {
     }
 
     private handleReconnect(): void {
+        if (this.isShuttingDown) {
+            console.log('Service is shutting down, skipping reconnect');
+            return;
+        }
+
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
+            console.log(`Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+
             this.reconnectTimer = setTimeout(() => {
-                this.connect();
+                if (!this.isShuttingDown) {
+                    this.connect();
+                }
             }, this.reconnectTimeout);
+        } else {
+            console.error('Max reconnection attempts reached');
         }
     }
 
@@ -269,7 +356,7 @@ export default class WebSocketService {
         this.stopHeartbeat();
 
         this.heartbeatInterval = setInterval(() => {
-            if (this.isConnected && this.socket?.readyState === WebSocket.OPEN) {
+            if (this.isConnected && this.socket?.readyState === WebSocket.OPEN && !this.isShuttingDown) {
                 this.sendMessage('heartbeat', { timestamp: Date.now() });
             }
         }, 60000);

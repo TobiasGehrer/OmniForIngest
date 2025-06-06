@@ -5,12 +5,9 @@ import jakarta.websocket.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 
 /**
  * Main GameRoom class
@@ -33,6 +30,8 @@ public class GameRoom {
     private long lastTimeUpdate = 0;
     private long lastGameStateUpdate = 0;
 
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+
     public GameRoom(String mapId) {
         this.core = new GameRoomCore(mapId);
         this.messaging = new GameRoomMessaging(core);
@@ -43,6 +42,10 @@ public class GameRoom {
     }
 
     private void update() {
+        if (isShuttingDown.get()) {
+            return;
+        }
+
         try {
             switch (core.getGameState()) {
                 case COUNTDOWN -> updateCountdown();
@@ -87,6 +90,10 @@ public class GameRoom {
     }
 
     public boolean connect(String username, Session session) {
+        if (isShuttingDown.get()) {
+            return false;
+        }
+
         boolean connected = core.connect(username, session);
 
         if (connected) {
@@ -114,9 +121,18 @@ public class GameRoom {
         }
 
         messaging.broadcastRoomStatus();
+
+        if (core.isEmpty() && isShuttingDown.compareAndSet(false, true)) {
+            logger.info("Room {} is empty, scheduling shutdown", core.getMapId());
+            gameLoop.schedule(this::shutdown, 1, TimeUnit.SECONDS);
+        }
     }
 
     public void handleMessage(String username, String messageType, Map<String, Object> data) {
+        if (isShuttingDown.get()) {
+            return;
+        }
+
         switch (messageType) {
             case "join_game" -> {} // Already handled
             case "ready_toggle" -> handleReadyToggle(username);
@@ -232,24 +248,37 @@ public class GameRoom {
         stats.calculateFinalStats(core.getPlayerStates());
         broadcastGameEnded(reason, stats);
 
-        gameLoop.schedule(this::kickAllPlayers, 10, TimeUnit.SECONDS);
+        gameLoop.schedule(this::kickAllPlayersAndShutdown, 15, TimeUnit.SECONDS);
     }
 
-    private void kickAllPlayers() {
+    private void kickAllPlayersAndShutdown() {
+        logger.info("Kicking all players and shutting down room {}", core.getMapId());
+
         List<String> playersToKick = new ArrayList<>(core.getPlayers().keySet());
+        Map<String, Object> kickMessage = Map.of(
+                "type", "room_shutdown",
+                "reason", "Game ended, returning to menu"
+        );
 
         for (String username : playersToKick) {
-            disconnect(username);
+            try {
+                messaging.sendKickMessageAndClose(username, kickMessage);
+            } catch (Exception e) {
+                logger.error("Error kicking player {}: {}", username, e.getMessage());
+            }
         }
 
-        resetRoom();
+        gameLoop.schedule(() -> {
+            core.forceDisconnectAll();
+            initiateShutdown();
+        }, 500, TimeUnit.MILLISECONDS);
     }
 
-    private void resetRoom() {
-        core.gameState = GameState.WAITING;
-        countdownSeconds = 0;
-        gameStartTime = 0;
-        combatSystem.reset();
+    private void initiateShutdown() {
+        if (isShuttingDown.compareAndSet(false, true)) {
+            logger.info("Initiating shutdown for room {}", core.getMapId());
+            shutdown();
+        }
     }
 
     // Broadcast methods
@@ -423,7 +452,15 @@ public class GameRoom {
         return core.getGameState();
     }
 
+    public boolean isShuttingDown() {
+        return isShuttingDown.get();
+    }
+
     public void shutdown() {
+        if (isShuttingDown.compareAndSet(false, true)) {
+            logger.info("Shutting down room {}", core.getMapId());
+        }
+
         gameLoop.shutdown();
         try {
             if (!gameLoop.awaitTermination(5, TimeUnit.SECONDS)) {

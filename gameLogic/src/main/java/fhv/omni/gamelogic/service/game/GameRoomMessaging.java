@@ -105,6 +105,29 @@ public class GameRoomMessaging {
         queueMessage(username, json);
     }
 
+    public void sendKickMessageAndClose(String username, Map<String, Object> kickMessage) {
+        String json = JsonUtils.toJson(kickMessage);
+        Session session = core.getPlayers().get(username);
+        
+        if (session != null && session.isOpen()) {
+            queueMessage(username, json);
+            
+            ExecutorService executor = playerExecutors.get(username);
+            if (executor != null && !executor.isShutdown()) {
+                executor.submit(() -> {
+                    try {
+                        Thread.sleep(100);
+                        if (session.isOpen()) {
+                            session.close();
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error closing session for {}: {}", username, e.getMessage());
+                    }
+                });
+            }
+        }
+    }
+
     public void broadcastRoomStatus() {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "room_status");

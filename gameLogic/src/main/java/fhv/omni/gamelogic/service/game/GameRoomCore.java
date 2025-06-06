@@ -26,7 +26,7 @@ public class GameRoomCore {
         this.mapId = mapId;
     }
 
-    public boolean connect(String username, Session session) {
+    public synchronized boolean connect(String username, Session session) {
         boolean isExistingPlayer = playerStates.containsKey(username);
 
         if (!isExistingPlayer && players.size() >= MAX_PLAYERS) {
@@ -53,19 +53,37 @@ public class GameRoomCore {
         return true;
     }
 
-    public void disconnect(String username) {
+    public synchronized void disconnect(String username) {
         Session session = players.remove(username);
 
         if (session != null) {
             try {
-                session.close();
+                if (session.isOpen()) {
+                    session.close();
+                }
             } catch (Exception e) {
-                logger.error("Error closing session: {}", e.getMessage());
+                logger.error("Error closing session for {}: {}", username, e.getMessage());
             }
         }
 
         playerStates.remove(username);
         playerReadyStatus.remove(username);
+    }
+
+    public void forceDisconnectAll() {
+        players.forEach((username, session) -> {
+            try {
+                if (session.isOpen()) {
+                    session.close();
+                }
+            } catch (Exception e) {
+                logger.warn("Error force closing session for {}: {}", username, e.getMessage());
+            }
+        });
+
+        players.clear();
+        playerStates.clear();
+        playerReadyStatus.clear();
     }
 
     public void handleReadyToggle(String username) {

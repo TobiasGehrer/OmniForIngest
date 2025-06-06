@@ -23,11 +23,24 @@ public class GameService {
     private final ScheduledExecutorService cleanupService = Executors.newSingleThreadScheduledExecutor();
 
     public GameService() {
-        cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 5, 5, TimeUnit.MINUTES);
+        cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 1, 2, TimeUnit.MINUTES);
     }
 
     public boolean connect(String username, String mapId, Session session) {
-        GameRoom room = gameRooms.computeIfAbsent(mapId, k -> new GameRoom(mapId));
+        GameRoom room = gameRooms.get(mapId);
+        
+        if (room != null && room.isShuttingDown()) {
+            logger.info("Removing shutting down room {} to allow recreation", mapId);
+            gameRooms.remove(mapId);
+            room = null;
+        }
+        
+        if (room == null) {
+            logger.info("Creating new game room for map {}", mapId);
+            room = new GameRoom(mapId);
+            gameRooms.put(mapId, room);
+        }
+
         boolean connected = room.connect(username, session);
 
         if (!connected) {
@@ -55,7 +68,7 @@ public class GameService {
 
     public void handleMessage(String username, String mapId, String messageType, Map<String, Object> data) {
         GameRoom room = gameRooms.get(mapId);
-        if (room != null) {
+        if (room != null && !room.isShuttingDown()) {
             room.handleMessage(username, messageType, data);
         }
     }
@@ -109,21 +122,35 @@ public class GameService {
     }
 
     private void cleanupEmptyRooms() {
+        logger.debug("Running room cleanup - current rooms: {}", gameRooms.size());
+
         gameRooms.entrySet().removeIf(entry -> {
             GameRoom room = entry.getValue();
-            if (room.isEmpty()) {
-                room.shutdown();
+            if (room.isEmpty() || room.isShuttingDown()) {
+                logger.info("Cleaning up room {} - empty: {}, shutting down: {}",
+                        entry.getKey(), room.isEmpty(), room.isShuttingDown());
+
+                if (!room.isShuttingDown()) {
+                    room.shutdown();
+                }
+
                 return true;
             }
+
             return false;
         });
+
+        logger.debug("After cleanup - remaining rooms: {}", gameRooms.size());
     }
 
     public void shutdown() {
+        logger.info("Shutting down GameService - closing {} rooms",  gameRooms.size());
+
         gameRooms.values().forEach(GameRoom::shutdown);
         gameRooms.clear();
 
         cleanupService.shutdown();
+
         try {
             if (!cleanupService.awaitTermination(5, TimeUnit.SECONDS)) {
                 cleanupService.shutdownNow();
