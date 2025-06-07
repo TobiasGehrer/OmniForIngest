@@ -3,10 +3,13 @@ import useEscapeKey from '../../../hooks/useEscapeKey';
 import useHoverSound from '../../../hooks/useHoverSound';
 import './EscapeMenu.css';
 import eventBus from '../../../utils/eventBus.ts'
+import WebSocketService from "../../services/WebSocketService.ts";
 
 const EscapeMenu: React.FC = () => {
     const [isVisible, setIsVisible] = useState(false);
+    const [isInGame, setIsInGame] = useState(false);
     const playHoverSound = useHoverSound();
+    const websocketService = WebSocketService.getInstance();
 
     // Toggle menu visibility and emit appropriate events
     const toggleMenu = useCallback(() => {
@@ -44,14 +47,33 @@ const EscapeMenu: React.FC = () => {
             }
         };
 
+        // Listen for game state changes to show/gide Leave Game button
+        const handleRoomStatus = () => {
+            setIsInGame(true);
+        }
+
+        const handleGameEnded = () => {
+            setIsInGame(false);
+        }
+
+        const handleBackToMenu = () => {
+            setIsInGame(false);
+        }
+
         eventBus.on('openEscapeMenu', handleOpenMenu);
         eventBus.on('closeEscapeMenu', handleCloseMenu);
         eventBus.on('gamePause', handleGamePause);
+        eventBus.on('room_status', handleRoomStatus);
+        eventBus.on('game_ended', handleGameEnded);
+        eventBus.on('backToMenu', handleBackToMenu);
 
         return () => {
             eventBus.off('openEscapeMenu', handleOpenMenu);
             eventBus.off('closeEscapeMenu', handleCloseMenu);
             eventBus.off('gamePause', handleGamePause);
+            eventBus.off('room_status', handleRoomStatus);
+            eventBus.off('game_ended', handleGameEnded);
+            eventBus.off('backToMenu', handleBackToMenu);
         };
     }, [isVisible, closeMenu, toggleMenu]);
 
@@ -62,9 +84,10 @@ const EscapeMenu: React.FC = () => {
         closeMenu();
     };
 
-    const handlePlayMultiplayer = () => {
+    const handleLeaveGame = () => {
         closeMenu();
-        eventBus.emit('startGame');
+        websocketService.disconnect();
+        eventBus.emit('backToMenu');
     };
 
     const handleLogout = async () => {
@@ -103,18 +126,20 @@ const EscapeMenu: React.FC = () => {
                     </button>
                 </li>
 
-                <li>
-                    <button
-                        type="button"
-                        className="button"
-                        variant="primary"
-                        buttonsize="big"
-                        onClick={handlePlayMultiplayer}
-                        onMouseEnter={playHoverSound}
-                    >
-                        Play Multiplayer
-                    </button>
-                </li>
+                {isInGame && (
+                    <li>
+                        <button
+                            type="button"
+                            className="button"
+                            variant="primary"
+                            buttonsize="big"
+                            onClick={handleLeaveGame}
+                            onMouseEnter={playHoverSound}
+                        >
+                            Leave Game
+                        </button>
+                    </li>
+                )}
 
                 <li>
                     <button

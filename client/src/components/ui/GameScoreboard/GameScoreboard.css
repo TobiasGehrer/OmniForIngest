@@ -161,7 +161,10 @@
     cursor: pointer;
     transition: all 0.3s ease;
     text-transform: uppercase;
-    min-width: 120px;
+    width: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .game-scoreboard__btn--primary {
@@ -202,4 +205,17 @@
 
 .game-scoreboard__container::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.5);
+}
+
+.game-scoreboard__btn-text {
+    flex: 1;
+    text-align: center;
+}
+
+.game-scoreboard__btn-countdown {
+    width: 30px;
+    text-align: right;
+    opacity: 0.8;
+    font-size: 0.9em;
+    margin-left: 8px;
 }

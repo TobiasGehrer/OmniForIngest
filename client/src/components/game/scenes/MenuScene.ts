@@ -4,11 +4,13 @@ import setTilePos from '../../../utils/setTilePos.ts';
 import createStaticObjects from '../../../utils/createStaticObjects.ts';
 import SoundManager from '../managers/SoundManager';
 import eventBus from '../../../utils/eventBus.ts';
+import NotificationManager from "../managers/NotificationManager.ts";
 
 export default class MenuScene extends Phaser.Scene {
     private player?: Player;
     private collisionGroup: Phaser.Physics.Arcade.StaticGroup | undefined;
     private soundManager!: SoundManager;
+    private notificationManager!: NotificationManager;
     private triggerZones: Phaser.Physics.Arcade.Group | undefined;
     private selectedMap: string | null = null;
 
@@ -76,9 +78,13 @@ export default class MenuScene extends Phaser.Scene {
         // Initialize sound manager
         this.soundManager = new SoundManager(this);
 
+        this.notificationManager = new NotificationManager();
+
         // Play background music with lowpass filter
         this.soundManager.playBackgroundMusic('menu_music');
         this.soundManager.setGain(0.1);
+
+        eventBus.on('backToMenu', this.handleBackToMenu.bind(this));
     }
 
     update(): void {
@@ -90,6 +96,8 @@ export default class MenuScene extends Phaser.Scene {
         if (this.soundManager) {
             this.soundManager.destroy();
         }
+
+        eventBus.off('backToMenu', this.handleBackToMenu.bind(this));
     }
 
     // Create static collision object group
@@ -256,5 +264,17 @@ export default class MenuScene extends Phaser.Scene {
 
         // Use the event bus to signal game mode change and pass map data
         eventBus.emit('startGame', {mapKey});
+    }
+
+    private handleBackToMenu(): void {
+        console.log('Back to menu event received');
+
+        this.selectedMap = null;
+
+        try {
+            sessionStorage.removeItem('selectedMapKey');
+        } catch (error) {
+            console.warn('Could not clear sessionStorage', error);
+        }
     }
 }

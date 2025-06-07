@@ -243,13 +243,22 @@ export default class WebSocketHandler {
 
     private handleConnectionFailed(data: any): void {
         console.error('Connection failed:', data);
-        this.notificationManager.showNotification(`Connection failed: ${data.message}`);
 
-        setTimeout(() =>{
-            if (typeof window !== 'undefined') {
-                window.location.href = '/';
-            }
-        }, 3000);
+        let notificationMessage = 'Connection failed';
+
+        if (data.reason === 'room_full') {
+            notificationMessage = 'Room is full! Please try again later.';
+        } else if (data.reason === 'game_in_progress') {
+            notificationMessage = 'A game is currently in progress. Please wait for it to finish.';
+        } else {
+            notificationMessage = data.message || 'Unable to connect to game room';
+        }
+
+        this.notificationManager.showNotification(notificationMessage);
+
+        setTimeout(() => {
+            eventBus.emit('backToMenu');
+        }, 2000);
     }
 
     private handleRoomShutdown(data: any): void {
@@ -257,7 +266,7 @@ export default class WebSocketHandler {
 
         setTimeout(() =>{
             eventBus.emit('backToMenu');
-        }, 2000);
+        }, 3000);
     }
 
     private getPlayerUsernames(): string[] {

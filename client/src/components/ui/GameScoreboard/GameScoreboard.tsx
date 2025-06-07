@@ -33,16 +33,19 @@ interface GameScoreboardProps {
 const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
     const [gameEndData, setGameEndData] = useState<GameEndData | null>(null);
     const [isVisible, setIsVisible] = useState(false);
+    const [autoReturnCountdown, setAutoReturnCountdown] = useState<number>(0);
 
     useEffect(() => {
         const handleGameEnded = (data: GameEndData) => {
             setGameEndData(data);
             setIsVisible(true);
+            setAutoReturnCountdown(15); // 15 seconds to read the scoreboard
         };
 
         const handleGameStarted = () => {
             setIsVisible(false);
             setGameEndData(null);
+            setAutoReturnCountdown(0);
         };
 
         // Register event handlers
@@ -55,17 +58,28 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
         };
     }, []);
 
-    const handleClose = () => {
-        setIsVisible(false);
-    };
+    // Auto-return countdown timer
+    useEffect(() => {
+        if (autoReturnCountdown > 0) {
+            const timer = setTimeout(() => {
+                setAutoReturnCountdown(autoReturnCountdown - 1);
+            }, 1000);
+
+            return () => clearTimeout(timer);
+        } else if (autoReturnCountdown === 0 && isVisible && gameEndData) {
+            // Auto return to menu when countdown reaches 0
+            handleBackToMenu();
+        }
+    }, [autoReturnCountdown, isVisible, gameEndData]);
 
     const handleBackToMenu = () => {
         eventBus.emit('backToMenu');
         setIsVisible(false);
+        setAutoReturnCountdown(0);
     };
 
     console.log('GameScoreboard render - isVisible:', isVisible, 'gameEndData:', gameEndData);
-    
+
     if (!isVisible || !gameEndData) {
         console.log('GameScoreboard hidden - isVisible:', isVisible, 'gameEndData exists:', !!gameEndData);
         return null;
@@ -89,9 +103,10 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
 
     const getRankIcon = (rank: number): string => {
         switch (rank) {
-            case 1: return '👑';
-            case 2: return '🥈';
-            case 3: return '🥉';
+            case 1: return '🥇'; // Gold medal
+            case 2: return '🥈'; // Silver medal
+            case 3: return '🥉'; // Bronze medal
+            case 4: return '🏅'; // Sports medal
             default: return `#${rank}`;
         }
     };
@@ -150,13 +165,10 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
                         className="game-scoreboard__btn game-scoreboard__btn--primary"
                         onClick={handleBackToMenu}
                     >
-                        Back to Menu
-                    </button>
-                    <button
-                        className="game-scoreboard__btn game-scoreboard__btn--secondary"
-                        onClick={handleClose}
-                    >
-                        Close
+                        <span className="game-scoreboard__btn-text">Back to Menu</span>
+                        <span className="game-scoreboard__btn-countdown">
+                            {autoReturnCountdown > 0 ? `(${autoReturnCountdown})` : ''}
+                        </span>
                     </button>
                 </div>
             </div>

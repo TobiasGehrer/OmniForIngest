@@ -37,7 +37,7 @@ const GameTimer: React.FC<GameTimerProps> = ({ isVisible = true }) => {
     }, []);
 
     console.log('GameTimer render - isVisible:', isVisible, 'isGameActive:', isGameActive, 'timeRemaining:', timeRemaining);
-    
+
     if (!isVisible || !isGameActive) {
         console.log('GameTimer hidden - isVisible:', isVisible, 'isGameActive:', isGameActive);
         return null;
@@ -61,7 +61,7 @@ const GameTimer: React.FC<GameTimerProps> = ({ isVisible = true }) => {
 
     return (
         <div className={`game-timer ${getTimerClass()}`}>
-            <div className="game-timer__label">Time Left</div>
+            <div className="game-timer__label">Time Left:</div>
             <div className="game-timer__time">{formatTime(timeRemaining)}</div>
         </div>
     );
