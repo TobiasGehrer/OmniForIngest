@@ -3,6 +3,7 @@ import {ChatMessage} from '../../../types/ChatMessage';
 import WebSocketService from '../../services/WebSocketService';
 import ChatInputState from '../../../services/ChatInputState';
 import {getPlayerColorCSS} from '../../../utils/getPlayerColor.ts';
+import eventBus from '../../../utils/eventBus.ts';
 
 import './Chat.css';
 
@@ -12,14 +13,13 @@ interface ChatProps {
 }
 
 const Chat: React.FC<ChatProps> = ({
-                                       displayDuration = 7000,
+                                       displayDuration = 5000,
                                        username = 'Unknown'
                                    }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isVisible, setIsVisible] = useState(false);
     const [isInputActive, setIsInputActive] = useState(false);
-    const [isWebSocketReady, setIsWebSocketReady] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,7 +33,6 @@ const Chat: React.FC<ChatProps> = ({
         const initializeWebSocket = async () => {
             try {
                 websocketService.current = await WebSocketService.getInstance();
-                setIsWebSocketReady(true);
             } catch (error) {
                 console.error('Failed to initialize WebSocket service:', error);
             }
@@ -42,37 +41,30 @@ const Chat: React.FC<ChatProps> = ({
         initializeWebSocket();
     }, []);
 
-    // Handle receiving new chat messages
+    // Handle receiving new chat messages via eventBus
     useEffect(() => {
-        if (!isWebSocketReady || !websocketService.current) return;
-
         const handleChatMessage = (data: any) => {
-            // Check if the message is a chat message
-            if (data.type === 'chat_message') {
-                const message: ChatMessage = {
-                    type: 'chat_message',
-                    username: data.username,
-                    message: data.message,
-                    timestamp: data.timestamp
-                };
-                setMessages(prevMessages => [...prevMessages, message]);
-                showChat();
-                notificationSound.play().catch(() => {
-                    // Suppress autoplay restrictions silently
-                });
-            }
+            const message: ChatMessage = {
+                type: 'chat_message',
+                username: data.username,
+                message: data.message,
+                timestamp: data.timestamp
+            };
+            setMessages(prevMessages => [...prevMessages, message]);
+            showChat();
+            notificationSound.play().catch(() => {
+                // Suppress autoplay restrictions silently
+            });
         };
 
-        // Register handler for chat_message type
-        websocketService.current.onMessageType('chat_message', handleChatMessage);
+        // Listen for chat messages via eventBus
+        eventBus.on('chat_message', handleChatMessage);
 
         return () => {
-            // Unregister handler when component unmounts
-            if (websocketService.current) {
-                websocketService.current.offMessageType('chat_message', handleChatMessage);
-            }
+            // Remove event listener when component unmounts
+            eventBus.off('chat_message', handleChatMessage);
         };
-    }, [isWebSocketReady]);
+    }, []);
 
     // Auto-hide chat after displayDuration
     const showChat = () => {
@@ -85,9 +77,12 @@ const Chat: React.FC<ChatProps> = ({
 
         // Set a new timeout to hide the chat
         hideTimeoutRef.current = setTimeout(() => {
-            if (!isInputActive) {
-                setIsVisible(false);
-            }
+            // Use functional state update to get current value
+            setIsVisible(prev => {
+                // Only hide if input is not currently active
+                const chatState = chatInputState.current.isChatInputActive();
+                return chatState ? prev : false;
+            });
         }, displayDuration);
     };
 
@@ -104,12 +99,12 @@ const Chat: React.FC<ChatProps> = ({
                     e.preventDefault();
                     setIsInputActive(true);
                     setIsVisible(true);
-                    // Notify that chat input is active
+                    // Notify that chat input is active FIRST
                     chatInputState.current.setChatInputActive(true);
-                    // Focus the input field
-                    setTimeout(() => {
+                    // Focus the input field immediately in next tick
+                    requestAnimationFrame(() => {
                         inputRef.current?.focus();
-                    }, 0);
+                    });
                 }
             } else if (e.key === 'Escape' && isInputActive) {
                 setIsInputActive(false);
@@ -168,21 +163,20 @@ const Chat: React.FC<ChatProps> = ({
         // Blur the input field to remove focus
         inputRef.current?.blur();
 
-        // Set timeout to hide chat
-        if (hideTimeoutRef.current) {
-            clearTimeout(hideTimeoutRef.current);
-        }
-        hideTimeoutRef.current = setTimeout(() => {
-            setIsVisible(false);
-        }, displayDuration);
+        // Use showChat() to maintain consistent timing
+        showChat();
     };
 
-    // Handle Enter key in the input field
+    // Handle keyboard events in the input field
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
+        // Prevent all key events from bubbling up to game handlers
+        e.stopPropagation();
+        
         if (e.key === 'Enter') {
             e.preventDefault();
             handleSubmit(e);
         }
+        // Allow all other keys (including WASD and space) to work normally
     };
 
     // Determine the CSS class based on the current state

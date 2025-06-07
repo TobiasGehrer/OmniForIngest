@@ -5,6 +5,7 @@
 - FEATURE: Wallet Microservice. [!26]
 - FEATURE: Game awards coins based on rankings. [!26]
 - FEATURE: Visual coin display on game scoreboard. [!26]
+- BUGFIX: Fixed broken chat [!26]
 
 ##### 2025-06-07 0.15.0
 

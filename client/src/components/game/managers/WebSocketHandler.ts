@@ -86,7 +86,8 @@ export default class WebSocketHandler {
             { type: 'game_ended', handler: this.handleGameEnded.bind(this) },
             { type: 'time_remaining', handler: this.handleTimeRemaining.bind(this) },
             { type: 'connection_failed', handler: this.handleConnectionFailed.bind(this) },
-            { type: 'room_shutdown', handler: this.handleRoomShutdown.bind(this) }
+            { type: 'room_shutdown', handler: this.handleRoomShutdown.bind(this) },
+            { type: 'chat_message', handler: this.handleChatMessage.bind(this) }
         ];
 
         handlers.forEach(({ type, handler }) => {
@@ -267,6 +268,11 @@ export default class WebSocketHandler {
         setTimeout(() =>{
             eventBus.emit('backToMenu');
         }, 3000);
+    }
+
+    private handleChatMessage(data: any): void {
+        // Emit chat message event for the Chat component to handle
+        eventBus.emit('chat_message', data);
     }
 
     private getPlayerUsernames(): string[] {
