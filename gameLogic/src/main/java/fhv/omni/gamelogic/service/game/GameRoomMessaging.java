@@ -161,13 +161,25 @@ public class GameRoomMessaging {
     }
 
     public void cleanup(String username) {
-        messageQueues.remove(username);
+        BlockingQueue<String> queue = messageQueues.remove(username);
+        if (queue != null) {
+            queue.clear();
+        }
+        
         sendingInProgress.remove(username);
 
         ExecutorService executor = playerExecutors.remove(username);
-
         if (executor != null) {
             executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    logger.warn("Executor did not terminate gracefully for {}", username);
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
 

@@ -16,7 +16,6 @@ public class GameRoom {
     private final Logger logger = LoggerFactory.getLogger(GameRoom.class);
     private final GameRoomCore core;
     private final GameRoomMessaging messaging;
-    private final GameLogic gameLogic;
     private final CombatSystem combatSystem;
 
     private final ScheduledExecutorService gameLoop = Executors.newSingleThreadScheduledExecutor();
@@ -35,7 +34,6 @@ public class GameRoom {
     public GameRoom(String mapId) {
         this.core = new GameRoomCore(mapId);
         this.messaging = new GameRoomMessaging(core);
-        this.gameLogic = new GameLogic(core, messaging);
         this.combatSystem = new CombatSystem(core, messaging);
 
         gameLoop.scheduleAtFixedRate(this::update, 0, TICK_RATE_MS, TimeUnit.MILLISECONDS);
@@ -91,19 +89,30 @@ public class GameRoom {
 
     public boolean connect(String username, Session session) {
         if (isShuttingDown.get()) {
+            logger.warn("Connection rejected for {} - room {} is shutting down", username, core.getMapId());
             return false;
         }
 
+        // Check if player exists before connecting
+        boolean isExistingPlayer = core.getPlayerStates().containsKey(username);
+        
         boolean connected = core.connect(username, session);
 
         if (connected) {
-            if (!core.getPlayerStates().containsKey(username)) {
-                broadcastPlayerJoined(username);
-            }
+            
+            // Always broadcast player_joined for all players when room is recreated
+            // This ensures all clients can see each other regardless of connection order
+            broadcastPlayerJoined(username);
 
+            // Send current state to the connecting player
             sendPlayerList(username);
             sendGameState(username);
+            
+            // Notify all players about room status changes
             messaging.broadcastRoomStatus();
+            
+        } else {
+            logger.warn("Connection failed for player {} to room {}", username, core.getMapId());
         }
 
         return connected;
@@ -133,6 +142,7 @@ public class GameRoom {
             return;
         }
 
+
         switch (messageType) {
             case "join_game" -> {} // Already handled
             case "ready_toggle" -> handleReadyToggle(username);
@@ -156,6 +166,10 @@ public class GameRoom {
     }
 
     private void handlePositionUpdate(String username, Map<String, Object> data) {
+        if (core.getGameState() != GameState.PLAYING) {
+            return;
+        }
+        
         try {
             double x = ((Number) data.getOrDefault("x", 0.0)).doubleValue();
             double y = ((Number) data.getOrDefault("y", 0.0)).doubleValue();
@@ -211,11 +225,14 @@ public class GameRoom {
     }
 
     private void startGame() {
+        logger.info("Starting game in room {} - transitioning to PLAYING state", core.getMapId());
         core.gameState = GameState.PLAYING;
         gameStartTime = System.currentTimeMillis();
         combatSystem.reset();
         core.resetPlayerStates();
         broadcastGameStarted();
+        logger.info("Game started in room {} - now in {} state with {} players", 
+                   core.getMapId(), core.getGameState(), core.getPlayerCount());
     }
 
     private void checkGameEndConditions() {
@@ -233,7 +250,11 @@ public class GameRoom {
                 .filter(state -> !state.isDead())
                 .count();
 
+
         if (alivePlayers <= 1 && core.getPlayerCount() > 1) {
+            logger.info("Game ending - only {} alive players remaining out of {}", alivePlayers, core.getPlayerCount());
+            core.getPlayerStates().forEach((username, state) -> 
+                logger.info("Player {} - Health: {}, Dead: {}", username, state.getHealth(), state.isDead()));
             endGame("Only one player remaining");
         }
     }
@@ -349,6 +370,7 @@ public class GameRoom {
         PlayerState state = core.getPlayerStates().get(username);
 
         if (state == null) {
+            logger.warn("Cannot broadcast player_joined for {} - no PlayerState found", username);
             return;
         }
 
@@ -393,6 +415,7 @@ public class GameRoom {
 
     private void sendPlayerList(String username) {
         List<String> playerList = new ArrayList<>(core.getPlayerStates().keySet());
+        
         Map<String, Object> message = Map.of(
                 "type", "player_list",
                 "players", playerList

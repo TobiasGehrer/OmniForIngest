@@ -28,23 +28,29 @@ public class GameService {
 
     public boolean connect(String username, String mapId, Session session) {
         GameRoom room = gameRooms.get(mapId);
+        boolean roomRecreated = false;
         
         if (room != null && room.isShuttingDown()) {
             logger.info("Removing shutting down room {} to allow recreation", mapId);
             gameRooms.remove(mapId);
             room = null;
+            roomRecreated = true;
         }
         
         if (room == null) {
-            logger.info("Creating new game room for map {}", mapId);
+            logger.info("Creating new game room for map {} (recreation: {})", mapId, roomRecreated);
             room = new GameRoom(mapId);
             gameRooms.put(mapId, room);
         }
 
+
         boolean connected = room.connect(username, session);
 
         if (!connected) {
+            logger.warn("Connection failed for {} to room {} - sending failure message", username, mapId);
             sendConnectionFailedMessage(session, room);
+        } else {
+            logger.info("Successfully connected {} to room {}", username, mapId);
         }
 
         return connected;
@@ -104,7 +110,7 @@ public class GameService {
 
             if (room.isFull()) {
                 errorMessage.put("reason", "room_full");
-                errorMessage.put("message", "Room is full (max 4 players");
+                errorMessage.put("message", "Room is full (max 4 players)");
             } else if (room.getGameState() == GameState.PLAYING || room.getGameState() == GameState.COUNTDOWN) {
                 errorMessage.put("reason", "game_in_progress");
                 errorMessage.put("message", "Game is in progress");
@@ -122,7 +128,6 @@ public class GameService {
     }
 
     private void cleanupEmptyRooms() {
-        logger.debug("Running room cleanup - current rooms: {}", gameRooms.size());
 
         gameRooms.entrySet().removeIf(entry -> {
             GameRoom room = entry.getValue();
@@ -140,7 +145,6 @@ public class GameService {
             return false;
         });
 
-        logger.debug("After cleanup - remaining rooms: {}", gameRooms.size());
     }
 
     public void shutdown() {

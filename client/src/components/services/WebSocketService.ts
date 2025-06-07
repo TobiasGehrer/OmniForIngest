@@ -313,6 +313,11 @@ export default class WebSocketService {
     }
 
     public getDebugInfo(): object {
+        const handlerCounts: { [key: string]: number } = {};
+        this.messageTypeHandlers.forEach((handlers, type) => {
+            handlerCounts[type] = handlers.length;
+        });
+
         return {
             isConnected: this.isConnected,
             isShuttingDown: this.isShuttingDown,
@@ -320,7 +325,8 @@ export default class WebSocketService {
             username: this.username,
             currentMap: this.currentMap,
             gameState: this.gameState,
-            reconnectAttempts: this.reconnectAttempts
+            reconnectAttempts: this.reconnectAttempts,
+            messageHandlerCounts: handlerCounts
         };
     }
 

@@ -114,7 +114,7 @@ public class GameStats {
 
         // Survivors get rank 1 or tie for rank 1 if multiple survivors
         Set<String> deadPlayers = new HashSet<>();
-        deathOrder.forEach(record -> {deadPlayers.add(record.getPlayerId());});
+        deathOrder.forEach(record -> deadPlayers.add(record.getPlayerId()));
 
         List<String> survivors = new ArrayList<>();
         for (String playerId : playerKills.keySet()) {

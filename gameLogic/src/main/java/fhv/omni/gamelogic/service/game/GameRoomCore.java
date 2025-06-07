@@ -28,12 +28,15 @@ public class GameRoomCore {
 
     public synchronized boolean connect(String username, Session session) {
         boolean isExistingPlayer = playerStates.containsKey(username);
+        
 
         if (!isExistingPlayer && players.size() >= MAX_PLAYERS) {
+            logger.warn("Cannot connect {} - room is full ({}/{})", username, players.size(), MAX_PLAYERS);
             return false;
         }
 
         if (!isExistingPlayer && (gameState == GameState.PLAYING || gameState == GameState.COUNTDOWN)) {
+            logger.warn("Cannot connect {} - game in progress (state: {})", username, gameState);
             return false;
         }
 

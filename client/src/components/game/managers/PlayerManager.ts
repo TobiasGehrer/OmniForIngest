@@ -144,6 +144,40 @@ export default class PlayerManager {
         }
     }
 
+    /**
+     * Update only position and movement data for a player, preserving health/death status
+     */
+    updatePlayerPosition(id: string, positionData: { x: number; y: number; vx: number; vy: number; flipX: boolean }): void {
+        const playerSprite = this.playerSprites.get(id);
+        const currentDeadState = this.playerDeadState.get(id) || false;
+
+        if (playerSprite && !currentDeadState) { // Only update if player is alive
+            // Update the target position
+            const movementData = this.playerMovementData.get(id);
+            if (movementData) {
+                movementData.targetX = positionData.x;
+                movementData.targetY = positionData.y;
+                movementData.lastUpdateTime = this.scene.time.now;
+            }
+
+            playerSprite.setFlipX(positionData.flipX);
+            playerSprite.setDepth(positionData.y);
+
+            // Check if hit animation is currently playing
+            const isHitAnimPlaying = this.playerHitAnimPlaying.get(id) || false;
+
+            // Only update animations if hit animation is not playing
+            if (!isHitAnimPlaying) {
+                // Normal animation updates for living players
+                if (positionData.vx !== 0 || positionData.vy !== 0) {
+                    playerSprite.play('walk', true);
+                } else {
+                    playerSprite.play('idle', true);
+                }
+            }
+        }
+    }
+
     removePlayer(id: string): void {
         this.playerSprites.get(id)?.destroy();
         this.playerSprites.delete(id);
@@ -311,78 +345,6 @@ export default class PlayerManager {
         return this.playerDeadState.get(this.username) || false;
     }
 
-    // /**
-    //  * Heal the local player by the specified amount
-    //  * @param amount Amount to heal (will be added to current health)
-    //  */
-    // //TODO: Unused?
-    // healLocalPlayer(amount: number): void {
-    //     if (this.isLocalPlayerDead()) {
-    //         return; // Can't heal a dead player
-    //     }
-    //
-    //     const playerSprite = this.getLocalPlayerSprite();
-    //     if (!playerSprite) return;
-    //
-    //     // Get the current health and calculate new health
-    //     const currentHealth = this.getPlayerHealth(this.username);
-    //     const maxHealth = 4;
-    //     const newHealth = Math.min(currentHealth + amount, maxHealth);
-    //
-    //     if (newHealth > currentHealth) {
-    //         // Update health display
-    //         this.updateHealthBar(this.username, newHealth, false);
-    //
-    //         // Send health update to server if needed
-    //         this.sendHealthUpdate(newHealth);
-    //     }
-    // }
-    //
-    // /**
-    //  * Damage the local player by the specified amount
-    //  * @param amount Amount of damage to apply (will be subtracted from current health)
-    //  */
-    // //TODO: Unused?
-    // damageLocalPlayer(amount: number): void {
-    //     if (this.isLocalPlayerDead()) {
-    //         return; // Can't damage a dead player
-    //     }
-    //
-    //     const playerSprite = this.getLocalPlayerSprite();
-    //     if (!playerSprite) return;
-    //
-    //     // Get the current health and calculate new health
-    //     const currentHealth = this.getPlayerHealth(this.username);
-    //     const newHealth = Math.max(currentHealth - amount, 0);
-    //     const died = newHealth <= 0;
-    //
-    //     // Apply damage tint (red flash)
-    //     playerSprite.setTint(0xff0000);
-    //     if (!died) {
-    //         this.scene.time.delayedCall(200, () => {
-    //             playerSprite.clearTint();
-    //         });
-    //     }
-    //
-    //     // Update health display
-    //     this.updateHealthBar(this.username, newHealth, died);
-    //
-    //     // Handle death if health dropped to zero
-    //     if (died && !this.isLocalPlayerDead()) {
-    //         this.playerDeadState.set(this.username, true);
-    //         playerSprite.play('death', true);
-    //
-    //         // Play death sound
-    //         if (this.scene.sound && this.scene.sound.add) {
-    //             const deathSound = this.scene.sound.add('death_sound', {volume: 0.3});
-    //             deathSound.play();
-    //         }
-    //     }
-    //
-    //     // Send health update to server if needed
-    //     this.sendHealthUpdate(newHealth);
-    // }
-
     getPlayerCount(): number {
         return this.playerSprites.size;
     }
@@ -522,36 +484,26 @@ export default class PlayerManager {
         }
     }
 
-    // /**
-    //  * Get the current health of a player
-    //  * @param username Username of the player
-    //  * @returns Current health value (defaults to max health if not found)
-    //  */
-    // private getPlayerHealth(username: string): number {
-    //     // Here we'd normally get the health from a stored health map
-    //     // For now, we'll estimate it from the health bar width
-    //     const healthBar = this.playerHealthBars.get(username);
-    //     if (!healthBar) return 4; // Default to max health
-    //
-    //     // This is a simplification - in a real implementation, you'd store health values directly
-    //     const healthBarData = healthBar.getData('health');
-    //     return healthBarData !== undefined ? healthBarData : 4;
-    // }
-    //
-    // /**
-    //  * Send a health update to the server for the local player
-    //  * @param health New health value
-    //  */
-    // private sendHealthUpdate(health: number): void {
-    //     try {
-    //         this.websocket.send(JSON.stringify({
-    //             type: 'player_health_update',
-    //             username: this.username,
-    //             health: health,
-    //             isDead: health <= 0
-    //         }));
-    //     } catch (error) {
-    //         console.error('Failed to send health update to server:', error);
-    //     }
-    // }
+
+    /**
+     * Clean up all player data when transitioning between games
+     */
+    public cleanup(): void {
+        // Destroy all player sprites
+        this.playerSprites.forEach((sprite) => {
+            sprite.destroy();
+        });
+        
+        // Destroy all health bar sprites
+        this.playerHealthBarSprites.forEach((healthBar) => {
+            healthBar.destroy();
+        });
+        
+        // Clear all data maps
+        this.playerSprites.clear();
+        this.playerMovementData.clear();
+        this.playerHealthBarSprites.clear();
+        this.playerDeadState.clear();
+        this.playerHitAnimPlaying.clear();
+    }
 }

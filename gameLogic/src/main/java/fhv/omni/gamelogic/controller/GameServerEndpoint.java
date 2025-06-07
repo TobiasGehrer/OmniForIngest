@@ -1,8 +1,6 @@
 package fhv.omni.gamelogic.controller;
 
 import fhv.omni.gamelogic.config.GameServerEndpointConfigurator;
-import fhv.omni.gamelogic.config.WebSocketConfig.GameInputDecoder;
-import fhv.omni.gamelogic.config.WebSocketConfig.GameInputEncoder;
 import fhv.omni.gamelogic.service.game.GameService;
 import jakarta.websocket.*;
 import jakarta.websocket.server.ServerEndpoint;
@@ -17,9 +15,7 @@ import java.util.Map;
 import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 
 @ServerEndpoint(value = "/game",
-        configurator = GameServerEndpointConfigurator.class,
-        decoders = {GameInputDecoder.class},
-        encoders = {GameInputEncoder.class})
+        configurator = GameServerEndpointConfigurator.class)
 @Component
 public class GameServerEndpoint {
 
@@ -47,7 +43,8 @@ public class GameServerEndpoint {
                 session.close();
                 return;
             }
-            username = tokenParams.get(0);
+
+            username = tokenParams.getFirst();
 
             // Extract mapId from map parameter
             List<String> mapParams = session.getRequestParameterMap().get("map");
@@ -57,11 +54,9 @@ public class GameServerEndpoint {
                 return;
             }
 
-            mapId = mapParams.get(0);
+            mapId = mapParams.getFirst();
 
-            logger.info("WebSocket connection opened for player: {} on map: {} with timeout: {}ms", 
-                       username, mapId, session.getMaxIdleTimeout());
-            logger.debug("Session ID: {}, Query string: {}", session.getId(), session.getQueryString());
+            logger.info("WebSocket connection opened for player: {} on map: {}", username, mapId);
 
             // Store both username and mapId in session for later use
             session.getUserProperties().put("username", username);
@@ -90,11 +85,9 @@ public class GameServerEndpoint {
             String mapId = (String) session.getUserProperties().get("mapId");
 
             if (username != null && mapId != null) {
-                logger.warn("WebSocket connection closed for player: {} on map: {} - Close Code: {} - Reason: {}", 
-                    username, mapId, closeReason.getCloseCode(), closeReason.getReasonPhrase());
+                logger.info("WebSocket connection closed for player: {} on map: {}", username, mapId);
             } else {
-                logger.warn("WebSocket connection closed for unknown player (properties not set) - Close Code: {} - Reason: {}", 
-                    closeReason.getCloseCode(), closeReason.getReasonPhrase());
+                logger.warn("WebSocket connection closed for unknown player");
             }
 
             gameService.disconnectBySession(session);

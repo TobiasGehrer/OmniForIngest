@@ -94,7 +94,7 @@ export default class GameplayScene extends Phaser.Scene {
         // Set up UI
         this.uiManager.createConnectionText();
 
-        // Connect to WebSocket if not already connected
+        // Connect to WebSocket - will request fresh state if already connected
         this.webSocketHandler.connect();
 
         // Set collision group for player manager
@@ -148,6 +148,21 @@ export default class GameplayScene extends Phaser.Scene {
         // Clean up effects
         if (this.effectsManager) {
             this.effectsManager.cleanup();
+        }
+
+        // Clean up WebSocket handlers to prevent duplicate handlers in next game
+        if (this.webSocketHandler) {
+            this.webSocketHandler.cleanup();
+        }
+
+        // Clean up player manager to remove all players and state
+        if (this.playerManager) {
+            this.playerManager.cleanup();
+        }
+
+        // Clean up projectile manager to remove all projectiles
+        if (this.projectileManager) {
+            this.projectileManager.cleanup();
         }
     }
 

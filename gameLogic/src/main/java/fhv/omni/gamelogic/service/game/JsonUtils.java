@@ -20,13 +20,4 @@ public class JsonUtils {
             return "{}";
         }
     }
-
-    public static <T> T fromJson(String json, Class<T> clazz) {
-        try {
-            return objectMapper.readValue(json, clazz);
-        } catch (JsonProcessingException e) {
-            logger.error("Error deserializing JSON to object", e);
-            return null;
-        }
-    }
 }

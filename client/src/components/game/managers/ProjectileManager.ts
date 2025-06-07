@@ -4,7 +4,8 @@ import {getPlayerColorHex} from '../../../utils/getPlayerColor';
 export default class ProjectileManager {
     private scene: Phaser.Scene;
     private projectiles: Phaser.GameObjects.Sprite[] = [];
-    private readonly projectileSpeed: number = 400;
+    // Match server speed: 6.3f per update (60fps) = 6.3 * 60 = 378 pixels per second
+    private readonly projectileSpeed: number = 378;
     private readonly projectileLifetime: number = 1000;
 
     constructor(scene: Phaser.Scene) {
@@ -90,5 +91,18 @@ export default class ProjectileManager {
             this.projectiles[index].destroy();
             this.projectiles.splice(index, 1);
         }
+    }
+
+    /**
+     * Clean up all projectiles when transitioning between games
+     */
+    public cleanup(): void {
+        // Destroy all projectile sprites
+        this.projectiles.forEach((projectile) => {
+            projectile.destroy();
+        });
+        
+        // Clear the projectiles array
+        this.projectiles = [];
     }
 }
