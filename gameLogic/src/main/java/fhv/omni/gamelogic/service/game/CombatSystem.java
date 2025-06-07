@@ -66,6 +66,11 @@ public class CombatSystem {
             if (playerState != null && !playerState.isDead()) {
                 int damageAmount = ((Number) data.getOrDefault("amount", 1)).intValue();
                 boolean died = playerState.takeDamage(damageAmount);
+
+                if (died) {
+                    gameStats.recordDeath(username);
+                }
+
                 broadcastDamageEvent(username, playerState.getHealth(), died);
             }
         } catch (Exception e) {

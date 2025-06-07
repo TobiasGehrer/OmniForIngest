@@ -41,7 +41,6 @@ out/
 .DS_Store
 
 ### Claude ###
+.claude/
 GLAUDE.md
-
-### Claude ###
 CLAUDE.md

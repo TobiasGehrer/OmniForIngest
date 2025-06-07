@@ -4,13 +4,11 @@ import setTilePos from '../../../utils/setTilePos.ts';
 import createStaticObjects from '../../../utils/createStaticObjects.ts';
 import SoundManager from '../managers/SoundManager';
 import eventBus from '../../../utils/eventBus.ts';
-import NotificationManager from "../managers/NotificationManager.ts";
 
 export default class MenuScene extends Phaser.Scene {
     private player?: Player;
     private collisionGroup: Phaser.Physics.Arcade.StaticGroup | undefined;
     private soundManager!: SoundManager;
-    private notificationManager!: NotificationManager;
     private triggerZones: Phaser.Physics.Arcade.Group | undefined;
     private selectedMap: string | null = null;
 
@@ -77,8 +75,6 @@ export default class MenuScene extends Phaser.Scene {
 
         // Initialize sound manager
         this.soundManager = new SoundManager(this);
-
-        this.notificationManager = new NotificationManager();
 
         // Play background music with lowpass filter
         this.soundManager.playBackgroundMusic('menu_music');
@@ -188,7 +184,6 @@ export default class MenuScene extends Phaser.Scene {
 
     // Handle player overlap with trigger zones
     private handleTriggerOverlap(
-        // @ts-expect-error Phaser passes the player even though we don't need it here
         player: Phaser.GameObjects.GameObject,
         trigger: Phaser.GameObjects.GameObject
     ): void {
@@ -204,7 +199,7 @@ export default class MenuScene extends Phaser.Scene {
             case 'map3':
                 this.selectedMap = triggerType;
 
-                this.setupTriggerExit(player, trigger, () => {
+                this.setupTriggerExit(player, trigger as Phaser.GameObjects.Zone, () => {
                     this.selectedMap = null;
                 })
 

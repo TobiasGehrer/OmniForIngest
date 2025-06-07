@@ -103,11 +103,19 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
 
     const getRankIcon = (rank: number): string => {
         switch (rank) {
-            case 1: return '🥇'; // Gold medal
-            case 2: return '🥈'; // Silver medal
-            case 3: return '🥉'; // Bronze medal
-            case 4: return '🏅'; // Sports medal
-            default: return `#${rank}`;
+            case 1: return '🥇';
+            case 2: return '🥈';
+            case 3: return '🥉';
+            default: return `${rank}`;
+        }
+    };
+
+    const getRankText = (rank: number): string => {
+        switch (rank) {
+            case 1: return '🥇';
+            case 2: return '🥈';
+            case 3: return '🥉';
+            default: return `${rank}th`;
         }
     };
 
@@ -127,7 +135,7 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
                 {localPlayerRank && (
                     <div className="game-scoreboard__your-result">
                         <div className="game-scoreboard__your-rank">
-                            You finished {getRankIcon(localPlayerRank.rank)}
+                            You finished {getRankText(localPlayerRank.rank)}
                         </div>
                         <div className="game-scoreboard__your-stats">
                             {localPlayerRank.kills} kills • {localPlayerRank.status}

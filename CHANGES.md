@@ -1,5 +1,11 @@
 # Changes
 
+##### 2025-06-07 0.15.0
+
+- FEATURE: Maps have different game rooms in backend. [!25]
+- FEATURE: Game lobby, game loop and ranking. [!25]
+- ENHANCEMENT: Websocket connection and closing. [!25]
+
 ##### 2025-06-05 0.14.0
 
 - FEATURE: Use username ingame. [!24]
