@@ -19,6 +19,21 @@ services:
     volumes:
       - auth-db_data:/var/lib/postgresql/data
 
+  wallet-db:
+    image: postgres:latest
+    container_name: postgres-wallet
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=omni_wallet
+    ports:
+      - '5433:5432'
+    volumes:
+      - wallet-db_data:/var/lib/postgresql/data
+
 volumes:
   auth-db_data:
+    driver: local
+  wallet-db_data:
     driver: local

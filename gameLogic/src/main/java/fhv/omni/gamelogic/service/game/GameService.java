@@ -1,6 +1,7 @@
 package fhv.omni.gamelogic.service.game;
 
 import fhv.omni.gamelogic.service.game.enums.GameState;
+import fhv.omni.gamelogic.service.wallet.CoinService;
 import jakarta.websocket.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +22,10 @@ public class GameService {
     private final Logger logger = LoggerFactory.getLogger(GameService.class);
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleanupService = Executors.newSingleThreadScheduledExecutor();
+    private final CoinService coinService;
 
-    public GameService() {
+    public GameService(CoinService coinService) {
+        this.coinService = coinService;
         cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 1, 2, TimeUnit.MINUTES);
     }
 
@@ -39,10 +42,9 @@ public class GameService {
         
         if (room == null) {
             logger.info("Creating new game room for map {} (recreation: {})", mapId, roomRecreated);
-            room = new GameRoom(mapId);
+            room = new GameRoom(mapId, coinService);
             gameRooms.put(mapId, room);
         }
-
 
         boolean connected = room.connect(username, session);
 
@@ -128,7 +130,6 @@ public class GameService {
     }
 
     private void cleanupEmptyRooms() {
-
         gameRooms.entrySet().removeIf(entry -> {
             GameRoom room = entry.getValue();
             if (room.isEmpty() || room.isShuttingDown()) {

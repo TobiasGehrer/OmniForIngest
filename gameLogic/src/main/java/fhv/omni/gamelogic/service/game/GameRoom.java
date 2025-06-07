@@ -1,6 +1,7 @@
 package fhv.omni.gamelogic.service.game;
 
 import fhv.omni.gamelogic.service.game.enums.GameState;
+import fhv.omni.gamelogic.service.wallet.CoinService;
 import jakarta.websocket.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +18,7 @@ public class GameRoom {
     private final GameRoomCore core;
     private final GameRoomMessaging messaging;
     private final CombatSystem combatSystem;
+    private final CoinService coinService;
 
     private final ScheduledExecutorService gameLoop = Executors.newSingleThreadScheduledExecutor();
     private static final long TICK_RATE_MS = 1000 / 60;
@@ -31,10 +33,11 @@ public class GameRoom {
 
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
-    public GameRoom(String mapId) {
+    public GameRoom(String mapId, CoinService coinService) {
         this.core = new GameRoomCore(mapId);
         this.messaging = new GameRoomMessaging(core);
         this.combatSystem = new CombatSystem(core, messaging);
+        this.coinService = coinService;
 
         gameLoop.scheduleAtFixedRate(this::update, 0, TICK_RATE_MS, TimeUnit.MILLISECONDS);
     }
@@ -267,9 +270,30 @@ public class GameRoom {
         core.gameState = GameState.FINISHED;
         GameStats stats = combatSystem.getGameStats();
         stats.calculateFinalStats(core.getPlayerStates());
+
+        // Award coins based on final rankings
+        Map<String, Integer> playerRanks = extractPlayerRanks(stats);
+        Map<String, Integer> coinsAwarded = coinService.awardCoinsToPlayer(playerRanks);
+        stats.setCoinsAwarded(coinsAwarded);
+
         broadcastGameEnded(reason, stats);
 
         gameLoop.schedule(this::kickAllPlayersAndShutdown, 15, TimeUnit.SECONDS);
+    }
+
+    private Map<String, Integer> extractPlayerRanks(GameStats stats) {
+        Map<String, Integer> playerRanks = new HashMap<>();
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rankings = (List<Map<String, Object>>) stats.getStatsAsMap().get("rankings");
+
+        for (Map<String, Object> ranking : rankings) {
+            String playerId = (String) ranking.get("playerId");
+            Integer rank = (Integer) ranking.get("rank");
+            playerRanks.put(playerId, rank);
+        }
+
+        return playerRanks;
     }
 
     private void kickAllPlayersAndShutdown() {

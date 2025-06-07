@@ -8,6 +8,7 @@ interface PlayerRanking {
     kills: number;
     status: 'survivor' | 'eliminated';
     deathOrder?: number;
+    coinsAwarded?: number;
 }
 
 interface GameStats {
@@ -139,6 +140,9 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
                         </div>
                         <div className="game-scoreboard__your-stats">
                             {localPlayerRank.kills} kills • {localPlayerRank.status}
+                            {localPlayerRank.coinsAwarded && (
+                                <span> • {localPlayerRank.coinsAwarded} 🪙</span>
+                            )}
                         </div>
                     </div>
                 )}
@@ -161,6 +165,9 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
                                     </div>
                                     <div className="game-scoreboard__player-stats">
                                         {player.kills} kills • {player.status}
+                                        {player.coinsAwarded && (
+                                            <span> • {player.coinsAwarded} 🪙</span>
+                                        )}
                                     </div>
                                 </div>
                             </div>

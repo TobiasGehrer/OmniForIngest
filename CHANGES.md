@@ -1,5 +1,11 @@
 # Changes
 
+##### 2025-06-07 0.16.0
+
+- FEATURE: Wallet Microservice. [!26]
+- FEATURE: Game awards coins based on rankings. [!26]
+- FEATURE: Visual coin display on game scoreboard. [!26]
+
 ##### 2025-06-07 0.15.0
 
 - FEATURE: Maps have different game rooms in backend. [!25]
