@@ -74,9 +74,10 @@ const GameScoreboard: React.FC<GameScoreboardProps> = ({ username }) => {
     }, [autoReturnCountdown, isVisible, gameEndData]);
 
     const handleBackToMenu = () => {
-        eventBus.emit('backToMenu');
-        setIsVisible(false);
+        // Stop the countdown timer immediately
         setAutoReturnCountdown(0);
+        setIsVisible(false);
+        eventBus.emit('backToMenu');
     };
 
     console.log('GameScoreboard render - isVisible:', isVisible, 'gameEndData:', gameEndData);

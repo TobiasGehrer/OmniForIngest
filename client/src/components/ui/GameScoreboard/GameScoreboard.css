@@ -10,17 +10,17 @@
     background-color: rgba(0, 0, 0, 0.9);
     backdrop-filter: blur(10px);
     z-index: 2000;
-    animation: scoreboard-appear 0.5s ease-out;
+    animation: overlay-fade-in 0.3s ease-out;
 }
 
-@keyframes scoreboard-appear {
+@keyframes overlay-fade-in {
     from {
-        opacity: 0;
-        transform: scale(0.9);
+        background-color: rgba(0, 0, 0, 0);
+        backdrop-filter: blur(0px);
     }
     to {
-        opacity: 1;
-        transform: scale(1);
+        background-color: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(10px);
     }
 }
 
@@ -40,6 +40,18 @@
     color: white;
     font-family: gameovercre, sans-serif;
     overflow-y: auto;
+    animation: container-slide-up 0.4s ease-out 0.2s both;
+}
+
+@keyframes container-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .game-scoreboard__header {

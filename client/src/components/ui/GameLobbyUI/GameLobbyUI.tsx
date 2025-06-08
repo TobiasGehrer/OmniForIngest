@@ -47,7 +47,7 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
         };
 
         const handleGameEnded = () => {
-            setIsVisible(true);
+            setIsVisible(false);
             setCountdown(null);
         };
 

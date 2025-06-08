@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import PlayerManager from './PlayerManager';
 import EffectsManager from './EffectsManager';
+import eventBus from "../../../utils/eventBus.ts";
 
 export interface TriggerZoneConfig {
     zoneType: string;
@@ -154,6 +155,10 @@ export default class TriggerZoneManager {
         const zoneId = trigger.getData('zoneId');
         // Prevent duplicate effect triggers
         if (this.activeZoneTimers.has(zoneId)) return;
+
+        if (zoneType === 'shop') {
+            eventBus.emit('openShop')
+        }
 
         if (zoneType === 'healing') {
             if (typeof (this.scene as any).startHealingEffect === 'function') {

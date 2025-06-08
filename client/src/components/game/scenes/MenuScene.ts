@@ -3,12 +3,14 @@ import Shopkeeper from '../entities/Shopkeeper';
 import setTilePos from '../../../utils/setTilePos.ts';
 import createStaticObjects from '../../../utils/createStaticObjects.ts';
 import SoundManager from '../managers/SoundManager';
+import NotificationManager from '../managers/NotificationManager';
 import eventBus from '../../../utils/eventBus.ts';
 
 export default class MenuScene extends Phaser.Scene {
     private player?: Player;
     private collisionGroup: Phaser.Physics.Arcade.StaticGroup | undefined;
     private soundManager!: SoundManager;
+    private notificationManager!: NotificationManager;
     private triggerZones: Phaser.Physics.Arcade.Group | undefined;
     private selectedMap: string | null = null;
 
@@ -65,6 +67,14 @@ export default class MenuScene extends Phaser.Scene {
                 undefined,
                 this
             );
+
+            // Set up continuous checking for trigger zone exits
+            this.time.addEvent({
+                delay: 100,
+                callback: this.checkTriggerExits,
+                callbackScope: this,
+                loop: true
+            });
         }
 
         // Camera setup
@@ -73,8 +83,9 @@ export default class MenuScene extends Phaser.Scene {
             this.cameras.main.setZoom(2).setRoundPixels(true);
         }
 
-        // Initialize sound manager
+        // Initialize managers
         this.soundManager = new SoundManager(this);
+        this.notificationManager = new NotificationManager();
 
         // Play background music with lowpass filter
         this.soundManager.playBackgroundMusic('menu_music');
@@ -191,29 +202,73 @@ export default class MenuScene extends Phaser.Scene {
 
         switch (triggerType) {
             case 'shop':
-                console.log('Entered shop area');
+                // Only trigger once per entry
+                if (!trigger.getData('triggered')) {
+                    console.log('Entered shop area');
+                    trigger.setData('triggered', true);
+                    eventBus.emit('openShop');
+                }
                 break;
 
             case 'map1':
             case 'map2':
             case 'map3':
-                this.selectedMap = triggerType;
+                // Only trigger once per entry
+                if (!trigger.getData('triggered')) {
+                    console.log(`Entering ${triggerType} trigger zone`);
+                    trigger.setData('triggered', true);
+                    this.selectedMap = triggerType;
 
-                this.setupTriggerExit(player, trigger as Phaser.GameObjects.Zone, () => {
-                    this.selectedMap = null;
-                })
+                    this.setupTriggerExit(player, trigger as Phaser.GameObjects.Zone, () => {
+                        console.log(`Exiting ${triggerType} trigger zone`);
+                        this.selectedMap = null;
+                        trigger.setData('triggered', false);
+                    })
 
-                // Add a small delay before allowing map loading to prevent accidental triggers
-                this.time.delayedCall(500, () => {
-                    if (this.selectedMap === triggerType) {
-                        this.loadGameplayScene(triggerType);
-                    }
-                });
+                    // Add a small delay before allowing map loading to prevent accidental triggers
+                    this.time.delayedCall(500, () => {
+                        if (this.selectedMap === triggerType) {
+                            console.log(`Attempting to load ${triggerType}`);
+                            this.loadGameplayScene(triggerType);
+                        }
+                    });
+                } else {
+                    console.log(`${triggerType} trigger already triggered`);
+                }
                 break;
 
             default:
                 console.log(`Unknown trigger type: ${triggerType}`);
         }
+    }
+
+    // Check if player has exited any trigger zones
+    private checkTriggerExits(): void {
+        if (!this.player || !this.triggerZones) return;
+
+        const playerBounds = this.player.getBounds();
+
+        this.triggerZones.children.entries.forEach((trigger) => {
+            const triggerZone = trigger as Phaser.GameObjects.Zone;
+            const triggerType = triggerZone.getData('triggerType');
+            const wasTriggered = triggerZone.getData('triggered');
+
+            if (wasTriggered) {
+                const triggerBounds = triggerZone.getBounds();
+                const stillOverlapping = Phaser.Geom.Rectangle.Overlaps(triggerBounds, playerBounds);
+
+                if (!stillOverlapping) {
+                    console.log(`Left ${triggerType} area`);
+                    triggerZone.setData('triggered', false);
+
+                    if (triggerType === 'shop') {
+                        eventBus.emit('closeShop');
+                    } else if (triggerType.startsWith('map')) {
+                        this.selectedMap = null;
+                    }
+                }
+            }
+        });
     }
 
     private setupTriggerExit(
@@ -228,6 +283,7 @@ export default class MenuScene extends Phaser.Scene {
             delay: 100,
             callback: () => {
                 if (!playerSprite.body || !triggerZone.body) {
+                    console.log('Exit callback triggered - no bodies');
                     exitCallback();
                     exitTimer.destroy();
                     return;
@@ -239,6 +295,7 @@ export default class MenuScene extends Phaser.Scene {
                 const stillOverlapping = Phaser.Geom.Rectangle.Overlaps(triggerBounds, playerBounds);
 
                 if (!stillOverlapping) {
+                    console.log('Exit callback triggered - no longer overlapping');
                     exitCallback();
                     exitTimer.destroy();
                 }
@@ -247,9 +304,50 @@ export default class MenuScene extends Phaser.Scene {
         });
     }
 
+    private async checkMapUnlock(mapKey: string, username: string): Promise<boolean> {
+        // Map1 is always unlocked by default
+        if (mapKey === 'map1') {
+            return true;
+        }
+
+        try {
+            const url = `http://localhost:8084/api/shop/check-map/${username}/${mapKey}`;
+            console.log('Checking map unlock:', url);
+            const response = await fetch(url, {
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
+                },
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Map unlock response:', data);
+                return data.unlocked;
+            } else {
+                console.log('Map unlock check failed:', response.status);
+            }
+        } catch (error) {
+            console.error('Error checking map unlock:', error);
+        }
+
+        // Default to locked for maps other than map1
+        return false;
+    }
+
     // Load the GameplayScene with the specified map
-    private loadGameplayScene(mapKey: string): void {
-        console.log(`Loading gamplay scene with map: ${mapKey}`);
+    private async loadGameplayScene(mapKey: string): Promise<void> {
+        const username = await this.getCurrentUsername();
+
+        const isUnlocked = await this.checkMapUnlock(mapKey, username);
+
+        if (!isUnlocked) {
+            const mapNumber = mapKey.replace('map', '');
+            this.notificationManager.showNotification(`Map ${mapNumber} is locked. Purchase access in the shop!`);
+            return;
+        }
+
+        console.log(`Loading gameplay scene with map: ${mapKey}`);
 
         // Clean up current scene
         this.shutdown();
@@ -259,6 +357,27 @@ export default class MenuScene extends Phaser.Scene {
 
         // Use the event bus to signal game mode change and pass map data
         eventBus.emit('startGame', {mapKey});
+    }
+
+    private async getCurrentUsername(): Promise<string> {
+        try {
+            const response = await fetch(`http://localhost:8080/me`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return data.username || 'Unknown';
+            }
+        } catch (error) {
+            console.error('Error fetching username:', error);
+        }
+
+        return 'Unknown';
     }
 
     private handleBackToMenu(): void {

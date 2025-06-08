@@ -14,6 +14,7 @@ import GameTimer from '../ui/GameTimer/GameTimer';
 import GameScoreboard from '../ui/GameScoreboard/GameScoreboard';
 import WebSocketService from '../services/WebSocketService.ts';
 import GameConfig = Phaser.Types.Core.GameConfig;
+import Shop from "../ui/Shop/Shop.tsx";
 
 interface GameProps {
     username?: string;
@@ -24,6 +25,7 @@ const Game: React.FC<GameProps> = () => {
     const gameInstance = useRef<Phaser.Game | null>(null);
     const [fetchedUserName, setFetchedUserName] = useState<string>('Unknown');
     const [isUsernameFetched, setIsUsernameFetched] = useState<boolean>(false);
+    const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
     const websocketService = useRef<WebSocketService>(WebSocketService.getInstance());
 
     useEffect(() => {
@@ -75,6 +77,8 @@ const Game: React.FC<GameProps> = () => {
         };
 
         const handleBackToMenu = () => {
+            console.log('Manual back to menu - disconnecting WebSocket');
+            websocketService.current.shutdown();
             setGameMode('menu');
         };
 
@@ -145,12 +149,32 @@ const Game: React.FC<GameProps> = () => {
         };
     }, [gameMode, fetchedUserName, isUsernameFetched]);
 
+    useEffect(() => {
+        const handleOpenShop = () => {
+            console.log('handleOpenShop called, setting isShopOpen to true');
+            setIsShopOpen(true);
+        };
+
+        const handleCloseShop = () => {
+            console.log('handleCloseShop called, setting isShopOpen to false');
+            setIsShopOpen(false);
+        };
+
+        eventBus.on('openShop', handleOpenShop);
+        eventBus.on('closeShop', handleCloseShop);
+
+        return () => {
+            eventBus.off('openShop', handleOpenShop);
+            eventBus.off('closeShop', handleCloseShop);
+        };
+    }, []);
+
     return (
         <>
             <div id="phaser-container"/>
+            <Notification/>
             {gameMode === 'gameplay' && (
                 <>
-                    <Notification/>
                     <GameUI/>
                     <Chat displayDuration={5000} username={fetchedUserName}/>
                     <GameLobbyUI username={fetchedUserName}/>
@@ -158,6 +182,10 @@ const Game: React.FC<GameProps> = () => {
                     <GameScoreboard username={fetchedUserName}/>
                 </>
             )}
+            <Shop
+                username={fetchedUserName}
+                isVisible={isShopOpen}
+            />
         </>
     );
 }
