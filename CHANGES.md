@@ -1,5 +1,18 @@
 # Changes
 
+##### 2025-06-09 0.18.0
+
+- FEATURE: Growing damage zone system for map3. [!29]
+- FEATURE: Static damage and healing zones on map3 (transferred from map2). [!29]
+- ENHANCEMENT: Smooth particle transition system for damage zone effects. [!29]
+
+##### 2025-06-08 0.17.0
+
+- FEATURE: Shop Microservice with map unlock system. [!27]
+- FEATURE: Shop UI for purchasing map access and future items. [!27]
+- FEATURE: Integration with Wallet service for secure transactions. [!27]
+- FEATURE: Map access control based on player unlocks. [!27]
+
 ##### 2025-06-07 0.16.0
 
 - FEATURE: Wallet Microservice. [!26]

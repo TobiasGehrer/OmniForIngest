@@ -19,6 +19,7 @@ public class GameRoom {
     private final GameRoomMessaging messaging;
     private final CombatSystem combatSystem;
     private final CoinService coinService;
+    private final GrowingDamageZone growingDamageZone;
 
     private final ScheduledExecutorService gameLoop = Executors.newSingleThreadScheduledExecutor();
     private static final long TICK_RATE_MS = 1000 / 60;
@@ -37,6 +38,7 @@ public class GameRoom {
         this.core = new GameRoomCore(mapId);
         this.messaging = new GameRoomMessaging(core);
         this.combatSystem = new CombatSystem(core, messaging);
+        this.growingDamageZone = new GrowingDamageZone(core, messaging, combatSystem);
         this.coinService = coinService;
 
         gameLoop.scheduleAtFixedRate(this::update, 0, TICK_RATE_MS, TimeUnit.MILLISECONDS);
@@ -74,6 +76,10 @@ public class GameRoom {
 
     private void updateGame() {
         combatSystem.updateProjectiles();
+
+        if ("map3".equals(core.getMapId())) {
+            growingDamageZone.update();
+        }
         
         long currentTime = System.currentTimeMillis();
 
@@ -232,7 +238,28 @@ public class GameRoom {
         core.gameState = GameState.PLAYING;
         gameStartTime = System.currentTimeMillis();
         combatSystem.reset();
+        growingDamageZone.reset();
         core.resetPlayerStates();
+
+        // Start growing damage zone for map3 after a delay
+        if ("map3".equals(core.getMapId())) {
+            gameLoop.schedule(() -> {
+                if (core.getGameState() == GameState.PLAYING) {
+                    // Use playable area dimensions (raw map minus the 700px offset from physics bounds)
+                    float mapWidth = 1284.0f; // Playable area width (1984 - 700)
+                    float mapHeight = 1120.0f; // Playable area height
+                    logger.info("Starting damage zone with playable area dimensions: {}x{}", mapWidth, mapHeight);
+                    growingDamageZone.start(mapWidth, mapHeight);
+                }
+            }, 5, TimeUnit.SECONDS);
+
+            gameLoop.schedule(() -> {
+                if (core.getGameState() == GameState.PLAYING) {
+                    growingDamageZone.stopShrinking();
+                }
+            }, 275, TimeUnit.SECONDS); // 4 minutes 30 seconds + 5 second initial delay
+        }
+
         broadcastGameStarted();
         logger.info("Game started in room {} - now in {} state with {} players", 
                    core.getMapId(), core.getGameState(), core.getPlayerCount());
@@ -266,6 +293,9 @@ public class GameRoom {
         if (core.gameState != GameState.PLAYING) {
             return;
         }
+
+        // Stop the damage zone
+        growingDamageZone.stop();
 
         core.gameState = GameState.FINISHED;
         GameStats stats = combatSystem.getGameStats();

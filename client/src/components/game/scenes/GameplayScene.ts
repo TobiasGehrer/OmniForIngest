@@ -13,6 +13,7 @@ import TriggerZoneManager from '../managers/TriggerZoneManager';
 import SceneInitializer from '../managers/SceneInitializer';
 import EffectsManager from '../managers/EffectsManager';
 import MapFeaturesManager from '../managers/MapFeaturesManager';
+import eventBus from "../../../utils/eventBus.ts";
 
 export default class GameplayScene extends Phaser.Scene {
     private playerManager!: PlayerManager;
@@ -123,6 +124,11 @@ export default class GameplayScene extends Phaser.Scene {
                 this.playerManager.setCollisionGroup(collisionGroup);
             }
         });
+
+        // Listen for growing damage zone updates
+        eventBus.on('growing_damage_zone_update', this.handleGrowingDamageZoneUpdate.bind(this));
+        eventBus.on('growing_damage_zone_start', this.handleGrowingDamageZoneStart.bind(this));
+        eventBus.on('growing_damage_zone_stop', this.handleGrowingDamageZoneStop.bind(this));
     }
 
     update(time: number): void {
@@ -137,6 +143,26 @@ export default class GameplayScene extends Phaser.Scene {
 
         // Update input handling
         this.inputManager.update(time);
+    }
+
+    private handleGrowingDamageZoneStart(): void {
+        this.effectsManager.createGrowingDamageZone();
+    }
+
+    private handleGrowingDamageZoneUpdate(data: any): void {
+        const playableArea = this.mapManager.getPlayableAreaDimensions();
+        
+        this.effectsManager.updateGrowingDamageZone(
+            data.centerX,
+            data.centerY,
+            data.radius,
+            playableArea.width,
+            playableArea.height
+        );
+    }
+
+    private handleGrowingDamageZoneStop(): void {
+        this.effectsManager.removeGrowingDamageZone();
     }
 
     shutdown(): void {
@@ -164,6 +190,10 @@ export default class GameplayScene extends Phaser.Scene {
         if (this.projectileManager) {
             this.projectileManager.cleanup();
         }
+
+        eventBus.off('growing_damage_zone_update', this.handleGrowingDamageZoneUpdate.bind(this));
+        eventBus.off('growing_damage_zone_start', this.handleGrowingDamageZoneStart.bind(this));
+        eventBus.off('growing_damage_zone_stop', this.handleGrowingDamageZoneStop.bind(this));
     }
 
     // Public methods for TriggerZoneManager to access

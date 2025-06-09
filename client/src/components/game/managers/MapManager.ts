@@ -98,6 +98,25 @@ export default class MapManager {
         };
     }
 
+    getPlayableAreaDimensions(): {
+        width: number;
+        height: number
+    } {
+        if (!this.map || !this.scene) {
+            return {
+                width: 0,
+                height: 0
+            };
+        }
+
+        // Return the physics world bounds which represent the actual playable area
+        const bounds = this.scene.physics.world.bounds;
+        return {
+            width: bounds.width,
+            height: bounds.height
+        };
+    }
+
     private createCollisionObjects(
         map: Phaser.Tilemaps.Tilemap,
         objectLayerName: string,

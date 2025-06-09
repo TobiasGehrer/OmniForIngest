@@ -32,7 +32,6 @@ export default class WebSocketHandler {
         const username = this.websocket.getUsername();
         if (!username) {
             // If no username is found, redirect to login screen
-            console.log('No username found, redirecting to login screen');
             this.redirectToLogin();
             // Set a temporary ID to prevent errors during redirection
             this.username = 'redirecting';
@@ -87,7 +86,10 @@ export default class WebSocketHandler {
             { type: 'time_remaining', handler: this.handleTimeRemaining.bind(this) },
             { type: 'connection_failed', handler: this.handleConnectionFailed.bind(this) },
             { type: 'room_shutdown', handler: this.handleRoomShutdown.bind(this) },
-            { type: 'chat_message', handler: this.handleChatMessage.bind(this) }
+            { type: 'chat_message', handler: this.handleChatMessage.bind(this) },
+            { type: 'growing_damage_zone_start', handler: this.handleGrowingDamageZoneStart.bind(this) },
+            { type: 'growing_damage_zone_update', handler: this.handleGrowingDamageZoneUpdate.bind(this) },
+            { type: 'growing_damage_zone_stop', handler: this.handleGrowingDamageZoneStop.bind(this) },
         ];
 
         handlers.forEach(({ type, handler }) => {
@@ -277,6 +279,18 @@ export default class WebSocketHandler {
 
     private getPlayerUsernames(): string[] {
         return this.playerManager.getPlayerUsernames();
+    }
+
+    private handleGrowingDamageZoneStart(data: any): void {
+        eventBus.emit('growing_damage_zone_start', data);
+    }
+
+    private handleGrowingDamageZoneUpdate(data: any): void {
+        eventBus.emit('growing_damage_zone_update', data);
+    }
+
+    private handleGrowingDamageZoneStop(data: any): void {
+        eventBus.emit('growing_damage_zone_stop', data);
     }
 
     /**
