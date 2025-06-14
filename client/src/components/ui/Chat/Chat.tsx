@@ -25,14 +25,25 @@ const Chat: React.FC<ChatProps> = ({
     const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const websocketService = useRef<WebSocketService | null>(null);
     const chatInputState = useRef<ChatInputState>(ChatInputState.getInstance());
-    const notificationSound = new Audio('/assets/audio/fx/chat.mp3');
-    notificationSound.volume = 0.3;
+    const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
+
+    // Initialize notification sound
+    useEffect(() => {
+        try {
+            notificationSoundRef.current = new Audio('/assets/audio/fx/chat.mp3');
+            if (notificationSoundRef.current) {
+                notificationSoundRef.current.volume = 0.3;
+            }
+        } catch (error) {
+            console.warn('Error creating chat notification sound:', error);
+        }
+    }, []);
 
     // Initialize WebSocket service
     useEffect(() => {
         const initializeWebSocket = async () => {
             try {
-                websocketService.current = await WebSocketService.getInstance();
+                websocketService.current = WebSocketService.getInstance();
             } catch (error) {
                 console.error('Failed to initialize WebSocket service:', error);
             }
@@ -52,9 +63,11 @@ const Chat: React.FC<ChatProps> = ({
             };
             setMessages(prevMessages => [...prevMessages, message]);
             showChat();
-            notificationSound.play().catch(() => {
-                // Suppress autoplay restrictions silently
-            });
+            if (notificationSoundRef.current) {
+                notificationSoundRef.current.play().catch(() => {
+                    // Suppress autoplay restrictions silently
+                });
+            }
         };
 
         // Listen for chat messages via eventBus
@@ -171,7 +184,7 @@ const Chat: React.FC<ChatProps> = ({
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
         // Prevent all key events from bubbling up to game handlers
         e.stopPropagation();
-        
+
         if (e.key === 'Enter') {
             e.preventDefault();
             handleSubmit(e);

@@ -6,12 +6,14 @@ interface GameTimerProps {
     isVisible?: boolean;
 }
 
-const GameTimer: React.FC<GameTimerProps> = ({ isVisible = true }) => {
+const GameTimer: React.FC<GameTimerProps> = ({isVisible = true}) => {
     const [timeRemaining, setTimeRemaining] = useState<number>(0);
     const [isGameActive, setIsGameActive] = useState(false);
 
     useEffect(() => {
-        const handleTimeRemaining = (data: { timeRemaining: number }) => {
+        const handleTimeRemaining = (data: {
+            timeRemaining: number
+        }) => {
             setTimeRemaining(data.timeRemaining);
         };
 
@@ -36,10 +38,8 @@ const GameTimer: React.FC<GameTimerProps> = ({ isVisible = true }) => {
         };
     }, []);
 
-    console.log('GameTimer render - isVisible:', isVisible, 'isGameActive:', isGameActive, 'timeRemaining:', timeRemaining);
 
     if (!isVisible || !isGameActive) {
-        console.log('GameTimer hidden - isVisible:', isVisible, 'isGameActive:', isGameActive);
         return null;
     }
 

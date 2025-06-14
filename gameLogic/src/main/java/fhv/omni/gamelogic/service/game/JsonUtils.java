@@ -7,10 +7,14 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.LoggerFactory;
 
 public class JsonUtils {
-    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(JsonUtils.class);
     public static final ObjectMapper objectMapper = new ObjectMapper()
             .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
             .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(JsonUtils.class);
+
+    private JsonUtils() {
+        // Private constructor to hide the implicit public one
+    }
 
     public static String toJson(Object object) {
         try {

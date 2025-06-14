@@ -10,9 +10,6 @@ import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Handles message queuing and broadcasting for game rooms
- */
 public class GameRoomMessaging {
     private final Logger logger = LoggerFactory.getLogger(GameRoomMessaging.class);
     private final GameRoomCore core;
@@ -35,12 +32,10 @@ public class GameRoomMessaging {
         }));
 
         BlockingQueue<String> queue = messageQueues.get(username);
-        if (queue.offer(message)) {
-            if (sendingInProgress.get(username).compareAndSet(false, true)) {
-                ExecutorService executor = playerExecutors.get(username);
-                if (executor != null && !executor.isShutdown()) {
-                    executor.submit(() -> processMessageQueue(username));
-                }
+        if (queue.offer(message) && sendingInProgress.get(username).compareAndSet(false, true)) {
+            ExecutorService executor = playerExecutors.get(username);
+            if (executor != null && !executor.isShutdown()) {
+                executor.submit(() -> processMessageQueue(username));
             }
         }
     }
@@ -49,36 +44,15 @@ public class GameRoomMessaging {
         BlockingQueue<String> queue = messageQueues.get(username);
         Session session = core.getPlayers().get(username);
 
-        if (queue == null || session == null) {
-            sendingInProgress.get(username).set(false);
+        if (!isValidQueueAndSession(queue, session, username)) {
             return;
         }
 
         try {
-            while (!queue.isEmpty() && session.isOpen()) {
-                String message = queue.poll();
-
-                if (message != null) {
-                    try {
-                        session.getBasicRemote().sendText(message);
-                    } catch (IOException e) {
-                        logger.warn("Failed to send message to player {}: {}", username, e.getMessage());
-                        break;
-                    }
-                }
-            }
+            sendMessagesFromQueue(queue, session, username);
         } finally {
             sendingInProgress.get(username).set(false);
-
-            if (!queue.isEmpty() && session.isOpen()) {
-                if (sendingInProgress.get(username).compareAndSet(false, true)) {
-                    ExecutorService executor = playerExecutors.get(username);
-
-                    if (executor != null && !executor.isShutdown()) {
-                        executor.submit(() -> processMessageQueue(username));
-                    }
-                }
-            }
+            scheduleNextProcessingIfNeeded(queue, session, username);
         }
     }
 
@@ -108,23 +82,10 @@ public class GameRoomMessaging {
     public void sendKickMessageAndClose(String username, Map<String, Object> kickMessage) {
         String json = JsonUtils.toJson(kickMessage);
         Session session = core.getPlayers().get(username);
-        
-        if (session != null && session.isOpen()) {
+
+        if (isValidSessionForKick(session)) {
             queueMessage(username, json);
-            
-            ExecutorService executor = playerExecutors.get(username);
-            if (executor != null && !executor.isShutdown()) {
-                executor.submit(() -> {
-                    try {
-                        Thread.sleep(100);
-                        if (session.isOpen()) {
-                            session.close();
-                        }
-                    } catch (Exception e) {
-                        logger.error("Error closing session for {}: {}", username, e.getMessage());
-                    }
-                });
-            }
+            scheduleSessionClose(username, session);
         }
     }
 
@@ -165,7 +126,7 @@ public class GameRoomMessaging {
         if (queue != null) {
             queue.clear();
         }
-        
+
         sendingInProgress.remove(username);
 
         ExecutorService executor = playerExecutors.remove(username);
@@ -200,5 +161,66 @@ public class GameRoomMessaging {
         messageQueues.clear();
         sendingInProgress.clear();
         playerExecutors.clear();
+    }
+
+    private boolean isValidQueueAndSession(BlockingQueue<String> queue, Session session, String username) {
+        if (queue == null || session == null) {
+            sendingInProgress.get(username).set(false);
+            return false;
+        }
+        return true;
+    }
+
+    private void sendMessagesFromQueue(BlockingQueue<String> queue, Session session, String username) {
+        while (!queue.isEmpty() && session.isOpen()) {
+            String message = queue.poll();
+            if (message != null && !sendMessage(session, message, username)) {
+                break;
+            }
+        }
+    }
+
+    private boolean sendMessage(Session session, String message, String username) {
+        try {
+            session.getBasicRemote().sendText(message);
+            return true;
+        } catch (IOException e) {
+            logger.warn("Failed to send message to player {}: {}", username, e.getMessage());
+            return false;
+        }
+    }
+
+    private void scheduleNextProcessingIfNeeded(BlockingQueue<String> queue, Session session, String username) {
+        if (!queue.isEmpty() && session.isOpen() && sendingInProgress.get(username).compareAndSet(false, true)) {
+            ExecutorService executor = playerExecutors.get(username);
+            if (executor != null && !executor.isShutdown()) {
+                executor.submit(() -> processMessageQueue(username));
+            }
+        }
+    }
+
+    private boolean isValidSessionForKick(Session session) {
+        return session != null && session.isOpen();
+    }
+
+    private void scheduleSessionClose(String username, Session session) {
+        ExecutorService executor = playerExecutors.get(username);
+        if (executor != null && !executor.isShutdown()) {
+            executor.submit(() -> closeSessionAfterDelay(username, session));
+        }
+    }
+
+    private void closeSessionAfterDelay(String username, Session session) {
+        try {
+            Thread.sleep(100);
+            if (session.isOpen()) {
+                session.close();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Interrupted while closing session for {}: {}", username, e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error closing session for {}: {}", username, e.getMessage());
+        }
     }
 }

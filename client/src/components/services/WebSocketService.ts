@@ -1,3 +1,5 @@
+import {getWsBaseUrl} from '../../utils/apiBaseUrl';
+
 export interface WebSocketConfig {
     serverUrl?: string;
     maxReconnectAttempts?: number;
@@ -10,13 +12,13 @@ export default class WebSocketService {
     private socket: WebSocket | null = null;
     private username: string | null = null;
     private isConnected: boolean = false;
-    private messageTypeHandlers: Map<string, ((data: any) => void)[]> = new Map();
+    private readonly messageTypeHandlers: Map<string, ((data: any) => void)[]> = new Map();
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 5;
     private reconnectTimeout: number = 3000;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private url: string = '';
-    private serverUrl: string = 'ws://localhost:8081/game';
+    private serverUrl: string = getWsBaseUrl();
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private connectionTimeoutMs: number = 5000;
     private currentMap: string = 'map1';
@@ -30,20 +32,6 @@ export default class WebSocketService {
             WebSocketService.instance.setupVisibilityHandling();
         }
         return WebSocketService.instance;
-    }
-
-    private setupVisibilityHandling(): void {
-        if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible' && !this.isConnected && !this.isShuttingDown) {
-                    setTimeout(() => {
-                        if (!this.isConnected && !this.isShuttingDown) {
-                            this.connect();
-                        }
-                    }, 1000);
-                }
-            });
-        }
     }
 
     public configure(config: WebSocketConfig): void {
@@ -95,10 +83,10 @@ export default class WebSocketService {
             return;
         }
 
-        const selectedMap = mapKey || this.getSelectedMapFromStorage() || this.currentMap;
+        const selectedMap = mapKey ?? this.getSelectedMapFromStorage() ?? this.currentMap;
         this.currentMap = selectedMap;
 
-        const urlToUse = serverUrl || this.serverUrl;
+        const urlToUse = serverUrl ?? this.serverUrl;
         this.url = `${urlToUse}?token=${encodeURIComponent(this.username)}&map=${encodeURIComponent(selectedMap)}`;
 
         console.log(`Attempting WebSocket connection to: ${this.url}`);
@@ -228,28 +216,12 @@ export default class WebSocketService {
         this.disconnect();
     }
 
-    /**
-     * Handle room shutdown from server - temporary shutdown for room cleanup
-     */
-    private handleRoomShutdown(): void {
-        console.log('Handling room shutdown from server');
-        // Temporarily set shutdown state
-        this.isShuttingDown = true;
-        this.disconnect();
-
-        // Reset shutdown state after a delay to allow for reconnection
-        setTimeout(() => {
-            console.log('Resetting shutdown state after room shutdown');
-            this.isShuttingDown = false;
-        }, 3000);
-    }
-
     public send(data: any): boolean {
         if (this.socket && this.socket.readyState === WebSocket.OPEN && !this.isShuttingDown) {
             try {
                 const message = {
                     ...data,
-                    username: data.username || this.username
+                    username: data.username ?? this.username
                 };
                 this.socket.send(JSON.stringify(message));
                 return true;
@@ -313,7 +285,9 @@ export default class WebSocketService {
     }
 
     public getDebugInfo(): object {
-        const handlerCounts: { [key: string]: number } = {};
+        const handlerCounts: {
+            [key: string]: number
+        } = {};
         this.messageTypeHandlers.forEach((handlers, type) => {
             handlerCounts[type] = handlers.length;
         });
@@ -330,12 +304,38 @@ export default class WebSocketService {
         };
     }
 
-    private getSelectedMapFromStorage(): string | null {
-        try {
-            return sessionStorage.getItem('selectedMapKey');
-        } catch (e) {
-            return null;
+    private setupVisibilityHandling(): void {
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && !this.isConnected && !this.isShuttingDown) {
+                    setTimeout(() => {
+                        if (!this.isConnected && !this.isShuttingDown) {
+                            this.connect();
+                        }
+                    }, 1000);
+                }
+            });
         }
+    }
+
+    /**
+     * Handle room shutdown from server - temporary shutdown for room cleanup
+     */
+    private handleRoomShutdown(): void {
+        console.log('Handling room shutdown from server');
+        // Temporarily set shutdown state
+        this.isShuttingDown = true;
+        this.disconnect();
+
+        // Reset shutdown state after a delay to allow for reconnection
+        setTimeout(() => {
+            console.log('Resetting shutdown state after room shutdown');
+            this.isShuttingDown = false;
+        }, 3000);
+    }
+
+    private getSelectedMapFromStorage(): string | null {
+        return sessionStorage.getItem('selectedMapKey');
     }
 
     private handleReconnect(): void {
@@ -363,7 +363,7 @@ export default class WebSocketService {
 
         this.heartbeatInterval = setInterval(() => {
             if (this.isConnected && this.socket?.readyState === WebSocket.OPEN && !this.isShuttingDown) {
-                this.sendMessage('heartbeat', { timestamp: Date.now() });
+                this.sendMessage('heartbeat', {timestamp: Date.now()});
             }
         }, 60000);
     }

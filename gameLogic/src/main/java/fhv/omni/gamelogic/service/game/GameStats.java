@@ -4,6 +4,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GameStats {
+    private static final String DEATH_ORDER_KEY = "deathOrder";
+    private static final String PLAYER_ID_KEY = "playerId";
+
     private final Map<String, Integer> playerKills = new ConcurrentHashMap<>();
     private final List<String> deathOrder = new ArrayList<>();
     private final Map<String, Integer> playerCoinsAwarded = new ConcurrentHashMap<>();
@@ -54,13 +57,13 @@ public class GameStats {
 
         for (int i = 0; i < deathOrder.size(); i++) {
             Map<String, Object> deathInfo = new HashMap<>();
-            deathInfo.put("playerId", deathOrder.get(i));
-            deathInfo.put("deathOrder", i + 1);
+            deathInfo.put(PLAYER_ID_KEY, deathOrder.get(i));
+            deathInfo.put(DEATH_ORDER_KEY, i + 1);
             deathInfo.put("deathTime", gameStartTime + (i * 10000)); // Placeholder
             deathOrderList.add(deathInfo);
         }
 
-        stats.put("deathOrder", deathOrderList);
+        stats.put(DEATH_ORDER_KEY, deathOrderList);
         stats.put("rankings", calculateRankings());
         return stats;
     }
@@ -82,7 +85,7 @@ public class GameStats {
 
         for (String survivor : survivors) {
             Map<String, Object> playerRank = new HashMap<>();
-            playerRank.put("playerId", survivor);
+            playerRank.put(PLAYER_ID_KEY, survivor);
             playerRank.put("rank", rank++);
             playerRank.put("kills", playerKills.get(survivor));
             playerRank.put("status", "survivor");
@@ -93,11 +96,11 @@ public class GameStats {
         for (int i = deathOrder.size() - 1; i >= 0; i--) {
             String deadPlayer = deathOrder.get(i);
             Map<String, Object> playerRank = new HashMap<>();
-            playerRank.put("playerId", deadPlayer);
+            playerRank.put(PLAYER_ID_KEY, deadPlayer);
             playerRank.put("rank", rank++);
             playerRank.put("kills", playerKills.get(deadPlayer));
             playerRank.put("status", "eliminated");
-            playerRank.put("deathOrder", i + 1);
+            playerRank.put(DEATH_ORDER_KEY, i + 1);
             playerRank.put("coinsAwarded", playerCoinsAwarded.getOrDefault(deadPlayer, 0));
             rankings.add(playerRank);
         }

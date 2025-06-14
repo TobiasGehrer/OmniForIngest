@@ -2,14 +2,7 @@ package fhv.omni.auth.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Transient;
+import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -33,6 +26,9 @@ public class OmniUser implements UserDetails, Serializable {
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "role")
     private Set<String> roles;
+    // Required for serialization
+    @Transient
+    private Set<SimpleGrantedAuthority> authorities;
 
     public OmniUser() {
         // Empty Constructor for ORM
@@ -48,10 +44,6 @@ public class OmniUser implements UserDetails, Serializable {
                 .collect(Collectors.toSet());
     }
 
-    // Required for serialization
-    @Transient
-    private Set<SimpleGrantedAuthority> authorities;
-    
     @JsonProperty
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -78,7 +70,7 @@ public class OmniUser implements UserDetails, Serializable {
     public String getUsername() {
         return this.username;
     }
-    
+
     @JsonIgnore
     @Override
     public boolean isAccountNonExpired() {

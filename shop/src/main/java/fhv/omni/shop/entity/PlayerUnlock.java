@@ -29,13 +29,13 @@ public class PlayerUnlock {
     @Column(name = "unlocked_at", nullable = false)
     private LocalDateTime unlockedAt = LocalDateTime.now();
 
-    @PrePersist
-    protected void onCreate() {
-        unlockedAt = LocalDateTime.now();
-    }
-
     public PlayerUnlock(String username, String itemId) {
         this.username = username;
         this.itemId = itemId;
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        unlockedAt = LocalDateTime.now();
     }
 }

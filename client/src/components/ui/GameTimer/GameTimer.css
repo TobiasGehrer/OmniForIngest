@@ -2,14 +2,12 @@
     position: fixed;
     top: -20px;
     left: 50%;
-    transform: translateX(-50%);
     display: flex;
-    flex-direction: row;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+    flex-direction: row;
     gap: 10px;
     min-width: 200px;
-    white-space: nowrap;
     padding: 25px 30px 15px 30px;
     border-width: 0;
     border-radius: 0 0 12px 12px;
@@ -18,25 +16,27 @@
     border-image-width: 20px 20px 20px 20px;
     background-color: transparent;
     font-family: gameovercre, sans-serif;
-    z-index: 1000;
-    pointer-events: none;
+    white-space: nowrap;
+    transform: translateX(-50%);
     transition: all 0.3s ease;
+    pointer-events: none;
+    z-index: 1000;
 }
 
 .game-timer__label {
-    font-size: 16px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     margin: 0;
+    font-size: 16px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }
 
 .game-timer__time {
+    min-width: 50px;
+    margin: 0;
     font-size: 20px;
     font-weight: bold;
-    text-shadow: 0 0 10px currentColor;
-    margin: 0;
-    min-width: 50px;
     text-align: center;
+    text-shadow: 0 0 10px currentColor;
 }
 
 .game-timer--normal {
@@ -47,7 +47,7 @@
     color: #86efac;
 }
 
-.game-timer--warning {
+.game-timer--warning .game-timer__time {
     color: #fbbf24;
     animation: timer-warning 1s infinite alternate;
 }
@@ -56,7 +56,7 @@
     color: #fcd34d;
 }
 
-.game-timer--critical {
+.game-timer--critical .game-timer__time {
     color: #ef4444;
     animation: timer-critical 0.5s infinite alternate;
 }
@@ -66,17 +66,21 @@
 }
 
 @keyframes timer-warning {
-    0% { transform: translateX(-50%) scale(1); }
-    100% { transform: translateX(-50%) scale(1.05); }
+    0% {
+        transform: scale(1);
+    }
+    100% {
+        transform: scale(1.1);
+    }
 }
 
 @keyframes timer-critical {
     0% {
-        transform: translateX(-50%) scale(1);
-        box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        transform: scale(1);
+        text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
     }
     100% {
-        transform: translateX(-50%) scale(1.1);
-        box-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
+        transform: scale(1.1);
+        text-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
     }
 }

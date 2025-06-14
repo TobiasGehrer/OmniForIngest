@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
-import battleMusic1 from '/assets/audio/music/battle_1.mp3';
-import attackFx from '/assets/audio/fx/attack.mp3';
-import damageFx from '/assets/audio/fx/hit.mp3';
-import deathFx from '/assets/audio/fx/death.mp3';
-import healFx from '/assets/audio/fx/heal.mp3';
-import notificationFx from '/assets/audio/fx/notification.mp3';
+import battleMusic1 from '../../../../public/assets/audio/music/battle_1.mp3';
+import battleMusic2 from '../../../../public/assets/audio/music/battle_2.mp3';
+import battleMusic3 from '../../../../public/assets/audio/music/battle_3.mp3';
+import attackFx from '../../../../public/assets/audio/fx/attack.mp3';
+import damageFx from '../../../../public/assets/audio/fx/hit.mp3';
+import deathFx from '../../../../public/assets/audio/fx/death.mp3';
+import healFx from '../../../../public/assets/audio/fx/heal.mp3';
+import notificationFx from '../../../../public/assets/audio/fx/notification.mp3';
 
 export default class MenuLoadingScene extends Phaser.Scene {
     private tipsText: Phaser.GameObjects.Text | undefined;
@@ -284,16 +286,25 @@ export default class MenuLoadingScene extends Phaser.Scene {
         this.load.tilemapTiledJSON('map2', 'assets/tiles/map2.json');
         this.load.tilemapTiledJSON('map3', 'assets/tiles/map3.json');
         this.load.audio('battle_1_music', battleMusic1);
+        this.load.audio('battle_2_music', battleMusic2);
+        this.load.audio('battle_3_music', battleMusic3);
         this.load.audio('attack_fx', attackFx);
         this.load.audio('damage_fx', damageFx);
         this.load.audio('heal_fx', healFx);
         this.load.audio('death_sound', deathFx);
         this.load.audio('notification_sound', notificationFx);
-        this.load.spritesheet('player', 'assets/sprites/characters/player.png', {
+        // Load all player skin sprites
+        for (let i = 0; i <= 25; i++) {
+            this.load.spritesheet(`player_${i}`, `assets/sprites/characters/player_${i}.png`, {
+                frameWidth: 24,
+                frameHeight: 24,
+            });
+        }
+        this.load.spritesheet('shopkeeper', 'assets/sprites/characters/shopkeeper.png', {
             frameWidth: 24,
             frameHeight: 24,
         });
-        this.load.spritesheet('shopkeeper', 'assets/sprites/characters/shopkeeper.png', {
+        this.load.spritesheet('npc', 'assets/sprites/characters/npc.png', {
             frameWidth: 24,
             frameHeight: 24,
         });

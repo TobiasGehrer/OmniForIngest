@@ -11,6 +11,7 @@ import ProjectileManager from './ProjectileManager';
 import SpawnPointManager from './SpawnPointManager';
 import TriggerZoneManager from './TriggerZoneManager';
 import WebSocketService from '../../services/WebSocketService';
+import NPCManager from './NPCManager.ts';
 
 export default class SceneInitializer {
     private readonly scene: Phaser.Scene;
@@ -28,6 +29,7 @@ export default class SceneInitializer {
     private projectileManager!: ProjectileManager;
     private spawnpointManager!: SpawnPointManager;
     private triggerZoneManager!: TriggerZoneManager;
+    private npcManager!: NPCManager;
 
     constructor(scene: Phaser.Scene, websocket: WebSocketService, username: string) {
         this.scene = scene;
@@ -46,7 +48,8 @@ export default class SceneInitializer {
         uiManager: UIManager,
         projectileManager: ProjectileManager,
         spawnpointManager: SpawnPointManager,
-        triggerZoneManager: TriggerZoneManager
+        triggerZoneManager: TriggerZoneManager,
+        npcManager: NPCManager
     } {
         // Initialize all managers
         this.playerManager = new PlayerManager(this.scene, this.username);
@@ -56,10 +59,13 @@ export default class SceneInitializer {
         this.mapManager.setScene(this.scene);
         this.spawnpointManager = SpawnPointManager.getInstance();
         this.animationManager = new AnimationManager(this.scene);
-        this.soundManager = new SoundManager(this.scene);
+        this.soundManager = SoundManager.getInstance(this.scene);
         this.uiManager = new UIManager(this.websocket, this.username);
         this.projectileManager = new ProjectileManager(this.scene);
         this.triggerZoneManager = new TriggerZoneManager(this.scene, this.playerManager);
+        this.npcManager = new NPCManager(this.scene);
+
+        (this.scene as any).npcManager = this.npcManager;
 
         // WebSocketHandler needs to be initialized after playerManager and notificationManager
         this.webSocketHandler = new WebSocketHandler(
@@ -67,7 +73,8 @@ export default class SceneInitializer {
             this.websocket,
             this.playerManager,
             this.notificationManager,
-            this.projectileManager
+            this.projectileManager,
+            this.npcManager
         );
 
         return {
@@ -81,7 +88,8 @@ export default class SceneInitializer {
             uiManager: this.uiManager,
             projectileManager: this.projectileManager,
             spawnpointManager: this.spawnpointManager,
-            triggerZoneManager: this.triggerZoneManager
+            triggerZoneManager: this.triggerZoneManager,
+            npcManager: this.npcManager
         };
     }
 

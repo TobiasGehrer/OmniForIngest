@@ -10,4 +10,5 @@ public record PurchaseResponse(
         @NotNull Integer remainingCoins,
         @NotNull Boolean success,
         String message
-) {}
+) {
+}

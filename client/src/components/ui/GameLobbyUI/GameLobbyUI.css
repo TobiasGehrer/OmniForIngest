@@ -3,41 +3,40 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 1500;
+    animation: lobby-fade-in 0.3s ease-out;
     pointer-events: auto;
-    animation: lobby-fade-in 0.5s ease-out;
-}
-
-@keyframes lobby-fade-in {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
+    z-index: 1500;
 }
 
 .game-lobby-ui__container {
     display: flex;
     flex-direction: column;
-    width: 400px;
-    max-width: 90vw;
-    padding: 30px;
+    min-width: 500px;
+    padding: 94px 36px 44px;
     border-width: 0;
     border-radius: 12px;
-    border-image-source: url("/ui/border-filled.png");
+    border-image-source: url("/ui/border-big-filled.png");
+    border-image-source: url("/ui/border-big-filled.png");
     border-image-slice: 41 44 41 47 fill;
-    border-image-width: 20px 20px 20px 20px;
+    border-image-slice: 225 41 50 41 fill;
+    border-image-width: 80px 20px 20px 20px;
     background-color: rgba(0, 0, 0, 0.9);
-    color: white;
     font-family: gameovercre, sans-serif;
+    color: white;
+
+    &::before {
+        content: attr(data-title);
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        font-size: 32px;
+        transform: translateX(-50%);
+    }
 }
 
 .game-lobby-ui__header {
-    text-align: center;
     margin-bottom: 20px;
+    text-align: center;
 }
 
 .game-lobby-ui__header h2 {
@@ -47,33 +46,26 @@
 }
 
 .game-lobby-ui__player-count {
-    font-size: 16px;
+    font-size: 14px;
     color: #ccc;
 }
 
 .game-lobby-ui__countdown {
-    text-align: center;
     padding: 40px 20px;
+    text-align: center;
 }
 
 .game-lobby-ui__countdown-title {
-    font-size: 18px;
     margin-bottom: 15px;
-    color: #ffaa00;
+    font-size: 24px;
 }
 
 .game-lobby-ui__countdown-number {
     font-size: 72px;
     font-weight: bold;
     color: #ff4444;
-    text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
     animation: countdown-pulse 1s infinite;
-}
-
-@keyframes countdown-pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
+    text-shadow: 0 0 20px rgba(255, 68, 68, 0.8);
 }
 
 .game-lobby-ui__content {
@@ -86,59 +78,56 @@
     margin: 0 0 15px 0;
     font-size: 18px;
     color: #63ab3f;
+    text-align: center;
 }
 
 .game-lobby-ui__player-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    font-size: 18px;
+    color: white;
 }
 
 .game-lobby-ui__player {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 10px 15px;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    transition: background-color 0.3s ease;
+    border-radius: 6px;
+    background-color: #313945;
+    transition: background-color 0.2s ease-out;
 }
 
 .game-lobby-ui__player--ready {
     background-color: rgba(99, 171, 63, 0.3);
-    border: 1px solid #63ab3f;
 }
 
 .game-lobby-ui__player-name {
     font-weight: bold;
 }
 
-.game-lobby-ui__player-status.ready {
-    color: #4ade80;
-}
+.game-lobby-ui__player-status {
+    display: flex;
+    align-items: center;
+    column-gap: 6px;
 
-.game-lobby-ui__player-status.not-ready {
-    color: #fbbf24;
+    &.ready {
+        color: limegreen;
+    }
+
+    &.not-ready {
+        color: red;
+    }
 }
 
 .game-lobby-ui__actions {
     display: flex;
-    flex-direction: column;
-    gap: 15px;
     align-items: center;
-}
-
-.game-lobby-ui__ready-btn {
-    width: 100%;
-    padding: 15px 20px;
-    border: none;
-    border-radius: 8px;
-    font-family: inherit;
-    font-size: 18px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-transform: uppercase;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .game-lobby-ui__ready-btn.not-ready {
@@ -168,26 +157,58 @@
 
 .game-lobby-ui__start-message {
     padding: 10px 15px;
-    background-color: rgba(74, 222, 128, 0.2);
     border: 1px solid #4ade80;
     border-radius: 6px;
-    text-align: center;
-    color: #4ade80;
+    background-color: rgba(74, 222, 128, 0.2);
     font-size: 14px;
+    color: #4ade80;
+    text-align: center;
     animation: gentle-glow 2s infinite alternate;
 }
 
 .game-lobby-ui__waiting-message {
-    padding: 10px 15px;
+    width: 100%;
+    min-height: 40px;
+    padding: 10px;
+    border-width: 0;
+    border-radius: 18px;
+    border-image-source: url("/ui/border-small.png");
+    border-image-slice: 28 27 29 28;
+    border-image-width: 10px;
     background-color: rgba(251, 191, 36, 0.2);
-    border: 1px solid #fbbf24;
-    border-radius: 6px;
-    text-align: center;
-    color: #fbbf24;
     font-size: 14px;
+    color: #fbbf24;
+    text-align: center;
+}
+
+@keyframes countdown-pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
 }
 
 @keyframes gentle-glow {
-    0% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.5); }
-    100% { box-shadow: 0 0 15px rgba(74, 222, 128, 0.8); }
+    0% {
+        box-shadow: 0 0 5px rgba(74, 222, 128, 0.5);
+    }
+    100% {
+        box-shadow: 0 0 15px rgba(74, 222, 128, 0.8);
+    }
+}
+
+@keyframes lobby-fade-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
 }

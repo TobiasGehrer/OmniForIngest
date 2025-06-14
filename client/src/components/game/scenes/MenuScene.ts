@@ -5,20 +5,26 @@ import createStaticObjects from '../../../utils/createStaticObjects.ts';
 import SoundManager from '../managers/SoundManager';
 import NotificationManager from '../managers/NotificationManager';
 import eventBus from '../../../utils/eventBus.ts';
+import ShopState from '../../../utils/ShopState';
+import {getApiBaseUrl, getShopBaseUrl} from '../../../utils/apiBaseUrl';
 
 export default class MenuScene extends Phaser.Scene {
     private player?: Player;
+    // @ts-ignore
+    private _shopkeeper?: Shopkeeper;
     private collisionGroup: Phaser.Physics.Arcade.StaticGroup | undefined;
     private soundManager!: SoundManager;
     private notificationManager!: NotificationManager;
     private triggerZones: Phaser.Physics.Arcade.Group | undefined;
     private selectedMap: string | null = null;
+    private isShopOpen: boolean = false;
 
     constructor() {
         super({key: 'MenuScene'});
     }
 
     preload(): void {
+        // Nothing to preload
     }
 
     create(): void {
@@ -53,7 +59,7 @@ export default class MenuScene extends Phaser.Scene {
         this.cameras.main.setBounds(0, 0, map.widthInPixels - 700, map.heightInPixels);
 
         // Create entities
-        new Shopkeeper(this, setTilePos(10), setTilePos(9));
+        this._shopkeeper = new Shopkeeper(this, setTilePos(10), setTilePos(9));
         this.player = new Player(this, setTilePos(30), setTilePos(15));
         this.physics.add.collider(this.player, this.collisionGroup);
 
@@ -84,7 +90,7 @@ export default class MenuScene extends Phaser.Scene {
         }
 
         // Initialize managers
-        this.soundManager = new SoundManager(this);
+        this.soundManager = SoundManager.getInstance(this);
         this.notificationManager = new NotificationManager();
 
         // Play background music with lowpass filter
@@ -92,9 +98,12 @@ export default class MenuScene extends Phaser.Scene {
         this.soundManager.setGain(0.1);
 
         eventBus.on('backToMenu', this.handleBackToMenu.bind(this));
+        eventBus.on('openShop', this.handleOpenShop, this);
+        eventBus.on('closeShop', this.handleCloseShop, this);
     }
 
     update(): void {
+        if (this.isShopOpen) return;
         this.player?.update();
     }
 
@@ -160,7 +169,7 @@ export default class MenuScene extends Phaser.Scene {
 
             if (className.startsWith('map')) {
                 let difficultyText = '';
-                let textColor = '#ffffff';
+                const textColor = '#ffffff';
 
                 switch (className) {
                     case 'map1':
@@ -175,7 +184,7 @@ export default class MenuScene extends Phaser.Scene {
                 }
 
                 if (difficultyText) {
-                    const text = this.add.text(x + width / 2, y - 10, difficultyText, {
+                    const text = this.add.text(x + width / 2, y - 2, difficultyText, {
                         fontFamily: 'gameovercre',
                         fontSize: '24px',
                         color: textColor,
@@ -186,6 +195,18 @@ export default class MenuScene extends Phaser.Scene {
                     text.setDepth(10);
                     text.setScale(0.5);
                 }
+            } else if (className === 'shop') {
+                // Add SHOP label above the shop trigger zone
+                const text = this.add.text(x + width / 2, y + 5, 'SHOP', {
+                    fontFamily: 'gameovercre',
+                    fontSize: '24px',
+                    color: '#ffffff',
+                    stroke: '#000000',
+                    strokeThickness: 4
+                });
+                text.setOrigin(0.5, 1);
+                text.setDepth(10);
+                text.setScale(0.5);
             }
 
             // Add to trigger zones group
@@ -204,7 +225,6 @@ export default class MenuScene extends Phaser.Scene {
             case 'shop':
                 // Only trigger once per entry
                 if (!trigger.getData('triggered')) {
-                    console.log('Entered shop area');
                     trigger.setData('triggered', true);
                     eventBus.emit('openShop');
                 }
@@ -225,13 +245,10 @@ export default class MenuScene extends Phaser.Scene {
                         trigger.setData('triggered', false);
                     })
 
-                    // Add a small delay before allowing map loading to prevent accidental triggers
-                    this.time.delayedCall(500, () => {
-                        if (this.selectedMap === triggerType) {
-                            console.log(`Attempting to load ${triggerType}`);
-                            this.loadGameplayScene(triggerType);
-                        }
-                    });
+                    if (this.selectedMap === triggerType) {
+                        console.log(`Attempting to load ${triggerType}`);
+                        this.loadGameplayScene(triggerType);
+                    }
                 } else {
                     console.log(`${triggerType} trigger already triggered`);
                 }
@@ -277,7 +294,7 @@ export default class MenuScene extends Phaser.Scene {
         exitCallback: () => void
     ): void {
         const playerSprite = player as Phaser.Physics.Arcade.Sprite;
-        const triggerZone = trigger as Phaser.GameObjects.Zone;
+        const triggerZone = trigger;
 
         const exitTimer = this.time.addEvent({
             delay: 100,
@@ -311,7 +328,7 @@ export default class MenuScene extends Phaser.Scene {
         }
 
         try {
-            const url = `http://localhost:8084/api/shop/check-map/${username}/${mapKey}`;
+            const url = `${getShopBaseUrl()}/api/shop/check-map/${username}/${mapKey}`;
             console.log('Checking map unlock:', url);
             const response = await fetch(url, {
                 headers: {
@@ -360,8 +377,15 @@ export default class MenuScene extends Phaser.Scene {
     }
 
     private async getCurrentUsername(): Promise<string> {
+        // First check if username is in the game registry
+        const usernameFromRegistry = this.registry.get('username');
+        if (usernameFromRegistry) {
+            console.log('Using username from registry:', usernameFromRegistry);
+            return usernameFromRegistry;
+        }
+
         try {
-            const response = await fetch(`http://localhost:8080/me`, {
+            const response = await fetch(`${getApiBaseUrl()}/me`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -371,7 +395,10 @@ export default class MenuScene extends Phaser.Scene {
 
             if (response.ok) {
                 const data = await response.json();
-                return data.username || 'Unknown';
+                const username = data.username ?? 'Unknown';
+                // Store username in registry for future use
+                this.registry.set('username', username);
+                return username;
             }
         } catch (error) {
             console.error('Error fetching username:', error);
@@ -380,7 +407,7 @@ export default class MenuScene extends Phaser.Scene {
         return 'Unknown';
     }
 
-    private handleBackToMenu(): void {
+    private async handleBackToMenu(): Promise<void> {
         console.log('Back to menu event received');
 
         this.selectedMap = null;
@@ -390,5 +417,40 @@ export default class MenuScene extends Phaser.Scene {
         } catch (error) {
             console.warn('Could not clear sessionStorage', error);
         }
+
+        // Fetch and store the current selected skin
+        const username = await this.getCurrentUsername();
+        if (username && username !== 'Unknown') {
+            try {
+                const response = await fetch(`${getShopBaseUrl()}/api/shop/preferences/${username}`, {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const selectedSkin = data.selectedSkin;
+                    // Store the selected skin in the registry for the next Player instance
+                    this.registry.set('selectedSkin', selectedSkin);
+                }
+            } catch (error) {
+                console.error('Error fetching selected skin:', error);
+            }
+        }
     }
+
+    private readonly handleOpenShop = () => {
+        this.isShopOpen = true;
+        ShopState.instance.isShopOpen = true;
+        if (this.player?.body) {
+            this.player.body.setVelocity(0, 0);
+            // Use the skin-specific idle animation key
+            const currentSkin = this.player.getCurrentSkin();
+            this.player.play(`idle_${currentSkin}`, true);
+        }
+    };
+
+    private readonly handleCloseShop = () => {
+        this.isShopOpen = false;
+        ShopState.instance.isShopOpen = false;
+    };
 }

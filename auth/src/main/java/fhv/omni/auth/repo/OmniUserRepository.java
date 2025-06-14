@@ -9,6 +9,8 @@ import java.util.Optional;
 @Repository
 public interface OmniUserRepository extends JpaRepository<OmniUser, String> {
     Optional<OmniUser> findByUsername(String username);
+
     Optional<OmniUser> findByUsernameIgnoreCase(String username);
+
     Optional<OmniUser> findByEmail(String email);
 }

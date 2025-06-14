@@ -5,11 +5,11 @@ import TriggerZoneManager from './TriggerZoneManager';
 import EffectsManager from './EffectsManager';
 
 export default class MapFeaturesManager {
-    private scene: Phaser.Scene;
-    private mapManager: MapManager;
-    private soundManager: SoundManager;
-    private triggerZoneManager: TriggerZoneManager;
-    private effectsManager: EffectsManager;
+    private readonly scene: Phaser.Scene;
+    private readonly mapManager: MapManager;
+    private readonly soundManager: SoundManager;
+    private readonly triggerZoneManager: TriggerZoneManager;
+    private readonly effectsManager: EffectsManager;
 
     constructor(
         scene: Phaser.Scene,
@@ -57,13 +57,13 @@ export default class MapFeaturesManager {
                 });
                 break;
             case 'map2':
-                this.soundManager.playBackgroundMusic('battle_1_music');
+                this.soundManager.playBackgroundMusic('battle_2_music');
                 this.scene.time.delayedCall(100, () => {
                     this.soundManager.setGain(0.2);
                 });
                 break;
             case 'map3':
-                this.soundManager.playBackgroundMusic('battle_1_music');
+                this.soundManager.playBackgroundMusic('battle_3_music');
                 this.scene.time.delayedCall(100, () => {
                     this.soundManager.setGain(0.2);
                 });

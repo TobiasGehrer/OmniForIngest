@@ -4,19 +4,18 @@ import fhv.omni.gamelogic.service.game.enums.GameState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Handles combat mechanics, projectiles and damage/healing
- */
 public class CombatSystem {
+    private static final float PROJECTILE_HIT_RADIUS = 12.0f;
     private final Logger logger = LoggerFactory.getLogger(CombatSystem.class);
     private final GameRoomCore core;
     private final GameRoomMessaging messaging;
     private final List<ProjectileState> projectiles = new ArrayList<>();
     private final GameStats gameStats = new GameStats();
-
-    private static final float PROJECTILE_HIT_RADIUS = 12.0f;
 
     public CombatSystem(GameRoomCore core, GameRoomMessaging messaging) {
         this.core = core;
@@ -35,7 +34,7 @@ public class CombatSystem {
                 float directionX = ((Number) data.getOrDefault("directionX", 0.0)).floatValue();
                 float directionY = ((Number) data.getOrDefault("directionY", 0.0)).floatValue();
 
-                createProjectile(username, attackerState.getX(), attackerState.getY(), directionX, directionY);
+                createProjectile(username, attackerState.getX(), attackerState.getY(), directionX, directionY, false);
             }
         } catch (Exception e) {
             logger.error("Error processing attack: {}", e.getMessage());
@@ -106,6 +105,46 @@ public class CombatSystem {
     }
 
     private boolean checkProjectileHit(ProjectileState projectile) {
+        String ownerId = projectile.getOwnerId();
+        boolean isNPCProjectile = ownerId.startsWith("npc_");
+
+        if (isNPCProjectile) {
+            return checkNPCProjectileHitPlayers(projectile);
+        } else {
+            return checkPlayerProjectileHit(projectile);
+        }
+    }
+
+    private boolean checkNPCProjectileHitPlayers(ProjectileState projectile) {
+        for (Map.Entry<String, PlayerState> entry : core.getPlayerStates().entrySet()) {
+            String targetUsername = entry.getKey();
+            PlayerState targetState = entry.getValue();
+
+            if (targetState.isDead()) {
+                continue;
+            }
+
+            float playerX = targetState.getX();
+            float playerY = targetState.getY() + 4.0f; // Adjust hit position
+
+            if (projectile.isInRangeOf(playerX, playerY, PROJECTILE_HIT_RADIUS)) {
+                boolean died = targetState.takeDamage(1);
+
+                // Only record kills if killer is not an NPC
+                if (died && !projectile.getOwnerId().startsWith("npc_")) {
+                    gameStats.recordKill(projectile.getOwnerId(), targetUsername);
+                }
+
+                broadcastDamageEvent(targetUsername, targetState.getHealth(), died);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean checkPlayerProjectileHit(ProjectileState projectile) {
+        // Check hits against other players
         for (Map.Entry<String, PlayerState> entry : core.getPlayerStates().entrySet()) {
             String targetUsername = entry.getKey();
             PlayerState targetState = entry.getValue();
@@ -132,13 +171,17 @@ public class CombatSystem {
         return false;
     }
 
-    private void createProjectile(String username, float x, float y, float directionX, float directionY) {
+    private void createProjectile(String username, float x, float y, float directionX, float directionY, boolean isNPC) {
         ProjectileState projectile = new ProjectileState(username, x, y, directionX, directionY);
         projectiles.add(projectile);
-        broadcastProjectileCreated(projectile);
+        broadcastProjectileCreated(projectile, isNPC);
     }
 
-    private void broadcastProjectileCreated(ProjectileState projectile) {
+    public void createNPCProjectile(String npcId, float x, float y, float directionX, float directionY) {
+        createProjectile(npcId, x, y, directionX, directionY, true);
+    }
+
+    private void broadcastProjectileCreated(ProjectileState projectile, boolean isNPC) {
         Map<String, Object> message = Map.of(
                 "type", "projectile_created",
                 "id", projectile.getId(),
@@ -146,7 +189,8 @@ public class CombatSystem {
                 "x", projectile.getX(),
                 "y", projectile.getY(),
                 "directionX", projectile.getDirectionX(),
-                "directionY", projectile.getDirectionY()
+                "directionY", projectile.getDirectionY(),
+                "isNPC", isNPC
         );
 
         messaging.broadcast(JsonUtils.toJson(message));
@@ -189,5 +233,9 @@ public class CombatSystem {
 
     public GameStats getGameStats() {
         return gameStats;
+    }
+
+    public List<ProjectileState> getProjectiles() {
+        return new ArrayList<>(projectiles);
     }
 }

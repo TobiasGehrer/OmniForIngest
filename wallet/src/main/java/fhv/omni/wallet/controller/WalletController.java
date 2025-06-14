@@ -16,8 +16,14 @@ import java.util.Map;
 @RequestMapping("/api/wallet")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:4173"}, allowCredentials="true")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:4173", "https://omni.jware.at"}, allowCredentials = "true")
 public class WalletController {
+
+    private static final String SUCCESS_KEY = "success";
+    private static final String MESSAGE_KEY = "message";
+    private static final String USERNAME_KEY = "username";
+    private static final String REMAINING_COINS_KEY = "remainingCoins";
+    private static final String COINS_KEY = "coins";
 
     private final WalletService walletService;
 
@@ -59,8 +65,8 @@ public class WalletController {
 
         if (amount <= 0) {
             return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Amount must be positive"
+                    SUCCESS_KEY, false,
+                    MESSAGE_KEY, "Amount must be positive"
             ));
         }
 
@@ -70,22 +76,22 @@ public class WalletController {
             WalletDto updatedWallet = walletService.deductCoins(username, amount);
 
             return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "username", updatedWallet.username(),
-                    "remainingCoins", updatedWallet.coins(),
-                    "message", "Coins deducted successfully"
+                    SUCCESS_KEY, true,
+                    USERNAME_KEY, updatedWallet.username(),
+                    REMAINING_COINS_KEY, updatedWallet.coins(),
+                    MESSAGE_KEY, "Coins deducted successfully"
             ));
         } catch (IllegalArgumentException e) {
             log.warn("Deduction failed for user {}: {}", username, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()
+                    SUCCESS_KEY, false,
+                    MESSAGE_KEY, e.getMessage()
             ));
         } catch (Exception e) {
             log.error("Error deducting coins from user {}: {}", username, e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Failed to deduct coins: " + e.getMessage()
+                    SUCCESS_KEY, false,
+                    MESSAGE_KEY, "Failed to deduct coins: " + e.getMessage()
             ));
         }
     }
@@ -95,8 +101,8 @@ public class WalletController {
         log.info("Getting coins for user: {}", username);
         Integer coins = walletService.getCoins(username);
         return ResponseEntity.ok(Map.of(
-                "username", username,
-                "coins", coins)
+                USERNAME_KEY, username,
+                COINS_KEY, coins)
         );
     }
 }

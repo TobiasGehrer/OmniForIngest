@@ -13,7 +13,8 @@ import TriggerZoneManager from '../managers/TriggerZoneManager';
 import SceneInitializer from '../managers/SceneInitializer';
 import EffectsManager from '../managers/EffectsManager';
 import MapFeaturesManager from '../managers/MapFeaturesManager';
-import eventBus from "../../../utils/eventBus.ts";
+import eventBus from '../../../utils/eventBus.ts';
+import NPCManager from '../managers/NPCManager.ts';
 
 export default class GameplayScene extends Phaser.Scene {
     private playerManager!: PlayerManager;
@@ -26,6 +27,7 @@ export default class GameplayScene extends Phaser.Scene {
     private projectileManager!: ProjectileManager;
     private spawnpointManager!: SpawnPointManager;
     private triggerZoneManager!: TriggerZoneManager;
+    private npcManager!: NPCManager;
     private effectsManager!: EffectsManager;
     private mapFeaturesManager!: MapFeaturesManager;
     private readonly websocket!: WebSocketService;
@@ -38,6 +40,7 @@ export default class GameplayScene extends Phaser.Scene {
     }
 
     preload(): void {
+        // Nothing to preload
     }
 
     create(): void {
@@ -56,6 +59,7 @@ export default class GameplayScene extends Phaser.Scene {
         this.projectileManager = managers.projectileManager;
         this.spawnpointManager = managers.spawnpointManager;
         this.triggerZoneManager = managers.triggerZoneManager;
+        this.npcManager = managers.npcManager;
 
         // Create additional managers
         this.effectsManager = new EffectsManager(this, this.playerManager);
@@ -102,6 +106,7 @@ export default class GameplayScene extends Phaser.Scene {
         const collisionGroup = this.mapManager.getCollisionGroup();
         if (collisionGroup) {
             this.playerManager.setCollisionGroup(collisionGroup);
+            this.npcManager.setCollisionGroup(collisionGroup);
         }
 
         // Add listener for map changes
@@ -122,6 +127,7 @@ export default class GameplayScene extends Phaser.Scene {
             const collisionGroup = this.mapManager.getCollisionGroup();
             if (collisionGroup) {
                 this.playerManager.setCollisionGroup(collisionGroup);
+                this.npcManager.setCollisionGroup(collisionGroup);
             }
         });
 
@@ -145,26 +151,6 @@ export default class GameplayScene extends Phaser.Scene {
         this.inputManager.update(time);
     }
 
-    private handleGrowingDamageZoneStart(): void {
-        this.effectsManager.createGrowingDamageZone();
-    }
-
-    private handleGrowingDamageZoneUpdate(data: any): void {
-        const playableArea = this.mapManager.getPlayableAreaDimensions();
-        
-        this.effectsManager.updateGrowingDamageZone(
-            data.centerX,
-            data.centerY,
-            data.radius,
-            playableArea.width,
-            playableArea.height
-        );
-    }
-
-    private handleGrowingDamageZoneStop(): void {
-        this.effectsManager.removeGrowingDamageZone();
-    }
-
     shutdown(): void {
         // Clean up resources when scene is shut down
         if (this.soundManager) {
@@ -186,9 +172,19 @@ export default class GameplayScene extends Phaser.Scene {
             this.playerManager.cleanup();
         }
 
+        // Clean up input manager to remove event listeners
+        if (this.inputManager) {
+            this.inputManager.cleanup();
+        }
+
         // Clean up projectile manager to remove all projectiles
         if (this.projectileManager) {
             this.projectileManager.cleanup();
+        }
+
+        // Clean up NPC manager to remove all NPCs
+        if (this.npcManager) {
+            this.npcManager.cleanup();
         }
 
         eventBus.off('growing_damage_zone_update', this.handleGrowingDamageZoneUpdate.bind(this));
@@ -203,5 +199,25 @@ export default class GameplayScene extends Phaser.Scene {
 
     public stopHealingEffect(): void {
         this.effectsManager.stopHealingEffect();
+    }
+
+    private handleGrowingDamageZoneStart(): void {
+        this.effectsManager.createGrowingDamageZone();
+    }
+
+    private handleGrowingDamageZoneUpdate(data: any): void {
+        const playableArea = this.mapManager.getPlayableAreaDimensions();
+
+        this.effectsManager.updateGrowingDamageZone(
+            data.centerX,
+            data.centerY,
+            data.radius,
+            playableArea.width,
+            playableArea.height
+        );
+    }
+
+    private handleGrowingDamageZoneStop(): void {
+        this.effectsManager.removeGrowingDamageZone();
     }
 }

@@ -20,7 +20,7 @@ export default function createStaticObjects(
                 case 'tree': {
                     const treeType = objData.properties?.find((p: {
                         name: string
-                    }) => p.name === 'treeType')?.value || 'tree_1';
+                    }) => p.name === 'treeType')?.value ?? 'tree_1';
 
                     gameObject = scene.add.sprite(x + (objData.width ?? 0) / 2, y + (objData.height ?? 0), treeType);
                     const sprite = gameObject as Phaser.GameObjects.Sprite;
@@ -31,16 +31,16 @@ export default function createStaticObjects(
                 case 'sign': {
                     const size = objData.properties?.find((p: {
                         name: string;
-                    }) => p.name === 'size')?.value || 'big';
+                    }) => p.name === 'size')?.value ?? 'big';
                     const ground = objData.properties?.find((p: {
                         name: string;
-                    }) => p.name === 'ground')?.value || 'light';
+                    }) => p.name === 'ground')?.value ?? 'light';
                     const variant = objData.properties?.find((p: {
                         name: string;
-                    }) => p.name === 'variant')?.value || 'wood';
+                    }) => p.name === 'variant')?.value ?? 'wood';
                     const orientation = objData.properties?.find((p: {
                         name: string;
-                    }) => p.name === 'orientation')?.value || 'front';
+                    }) => p.name === 'orientation')?.value ?? 'front';
                     const spriteName = `sign_${size}_${ground}_${variant}_${orientation}`;
 
                     gameObject = scene.add.sprite(x + (objData.width ?? 0) / 2, y + (objData.height ?? 0), spriteName);
@@ -55,7 +55,7 @@ export default function createStaticObjects(
                     }) => p.name === 'isOn')?.value;
                     const ground = objData.properties?.find((p: {
                         name: string;
-                    }) => p.name === 'ground')?.value || 'light';
+                    }) => p.name === 'ground')?.value ?? 'light';
                     const spriteName = `lantern_${ground}_${isOn}`;
 
                     gameObject = scene.add.sprite(x + (objData.width ?? 0) / 2, y + (objData.height ?? 0), spriteName);

@@ -10,9 +10,7 @@ export default class SpawnPointManager {
     }
 
     public static getInstance(): SpawnPointManager {
-        if (!SpawnPointManager.instance) {
-            SpawnPointManager.instance = new SpawnPointManager();
-        }
+        SpawnPointManager.instance ??= new SpawnPointManager();
         return SpawnPointManager.instance;
     }
 
@@ -63,6 +61,10 @@ export default class SpawnPointManager {
 
         const randomIndex = Math.floor(Math.random() * this.spawnpoints.length);
         return this.spawnpoints[randomIndex];
+    }
+
+    public getAllSpawnpoints(): Phaser.Types.Math.Vector2Like[] {
+        return [...this.spawnpoints];
     }
 
     private createDefaultSpawnpoints(): void {

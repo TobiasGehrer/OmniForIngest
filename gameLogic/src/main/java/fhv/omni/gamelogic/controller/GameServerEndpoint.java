@@ -20,6 +20,9 @@ import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 public class GameServerEndpoint {
 
     private static final Logger logger = LoggerFactory.getLogger(GameServerEndpoint.class);
+    private static final String USERNAME_KEY = "username";
+    private static final String MAP_ID_KEY = "mapId";
+
     private final GameService gameService;
 
     @Autowired
@@ -35,7 +38,7 @@ public class GameServerEndpoint {
         try {
             // Set session timeout to 5 minutes
             session.setMaxIdleTimeout(300000L); // 5 minutes in milliseconds
-            
+
             // Extract username from token parameter
             List<String> tokenParams = session.getRequestParameterMap().get("token");
             if (tokenParams == null || tokenParams.isEmpty()) {
@@ -59,14 +62,13 @@ public class GameServerEndpoint {
             logger.info("WebSocket connection opened for player: {} on map: {}", username, mapId);
 
             // Store both username and mapId in session for later use
-            session.getUserProperties().put("username", username);
-            session.getUserProperties().put("mapId", mapId);
+            session.getUserProperties().put(USERNAME_KEY, username);
+            session.getUserProperties().put(MAP_ID_KEY, mapId);
 
             boolean connected = gameService.connect(username, mapId, session);
 
             if (!connected) {
                 logger.warn("Connection rejected for player {} on map {}", username, mapId);
-                return;
             }
         } catch (Exception e) {
             logger.error("Error in Websocket open handler", e);
@@ -81,8 +83,8 @@ public class GameServerEndpoint {
     @OnClose
     public void onClose(Session session, CloseReason closeReason) {
         try {
-            String username = (String) session.getUserProperties().get("username");
-            String mapId = (String) session.getUserProperties().get("mapId");
+            String username = (String) session.getUserProperties().get(USERNAME_KEY);
+            String mapId = (String) session.getUserProperties().get(MAP_ID_KEY);
 
             if (username != null && mapId != null) {
                 logger.info("WebSocket connection closed for player: {} on map: {}", username, mapId);
@@ -103,18 +105,15 @@ public class GameServerEndpoint {
             Map<String, Object> jsonMessage = objectMapper.readValue(message, new com.fasterxml.jackson.core.type.TypeReference<>() {});
 
             // Get player ID and map ID from session properties
-            String username = (String) session.getUserProperties().get("username");
-            String mapId = (String) session.getUserProperties().get("mapId");
+            String username = (String) session.getUserProperties().get(USERNAME_KEY);
+            String mapId = (String) session.getUserProperties().get(MAP_ID_KEY);
 
             if (username == null || mapId == null) {
                 logger.warn("Received message from session without username or mapId");
                 return;
             }
 
-            // Extract message type
             String messageType = (String) jsonMessage.getOrDefault("type", "");
-
-            // Handle the message
             gameService.handleMessage(username, mapId, messageType, jsonMessage);
         } catch (Exception e) {
             logger.error("Error processing message: {}", e.getMessage(), e);
@@ -125,19 +124,19 @@ public class GameServerEndpoint {
     public void onError(Session session, Throwable throwable) {
         String username = "UNKNOWN";
         String mapId = "UNKNOWN";
-        
+
         try {
             // Safely get user properties from session
             if (session != null && session.isOpen()) {
-                username = (String) session.getUserProperties().get("username");
-                mapId = (String) session.getUserProperties().get("mapId");
+                username = (String) session.getUserProperties().get(USERNAME_KEY);
+                mapId = (String) session.getUserProperties().get(MAP_ID_KEY);
             }
         } catch (Exception e) {
             logger.debug("Could not retrieve session properties: {}", e.getMessage());
         }
 
         logger.error("WebSocket error for player: {} on map: {}", username, mapId, throwable);
-        
+
         try {
             gameService.disconnectBySession(session);
         } catch (Exception e) {

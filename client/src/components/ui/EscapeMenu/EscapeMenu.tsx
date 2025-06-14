@@ -3,7 +3,9 @@ import useEscapeKey from '../../../hooks/useEscapeKey';
 import useHoverSound from '../../../hooks/useHoverSound';
 import './EscapeMenu.css';
 import eventBus from '../../../utils/eventBus.ts'
-import WebSocketService from "../../services/WebSocketService.ts";
+import WebSocketService from '../../services/WebSocketService.ts';
+import ShopState from '../../../utils/ShopState';
+import {getApiBaseUrl} from '../../../utils/apiBaseUrl';
 
 const EscapeMenu: React.FC = () => {
     const [isVisible, setIsVisible] = useState(false);
@@ -13,12 +15,14 @@ const EscapeMenu: React.FC = () => {
 
     // Toggle menu visibility and emit appropriate events
     const toggleMenu = useCallback(() => {
+        // Prevent opening if shop is open
+        if (!isVisible && ShopState.instance.isShopOpen) return;
         setIsVisible((prev) => {
             const newState = !prev;
             eventBus.emit(newState ? 'escapeMenuOpen' : 'escapeMenuClose');
             return newState;
         });
-    }, []);
+    }, [isVisible]);
 
     // Close menu and emit appropriate event
     const closeMenu = useCallback(() => {
@@ -78,7 +82,11 @@ const EscapeMenu: React.FC = () => {
     }, [isVisible, closeMenu, toggleMenu]);
 
     // Handle escape key press
-    useEscapeKey(toggleMenu);
+    useEscapeKey(() => {
+        if (!ShopState.instance.isShopOpen) {
+            toggleMenu();
+        }
+    });
 
     const handleResume = () => {
         closeMenu();
@@ -94,7 +102,7 @@ const EscapeMenu: React.FC = () => {
         closeMenu();
 
         try {
-            await fetch('http://localhost:8080/logout', {
+            await fetch(`${getApiBaseUrl()}/logout`, {
                 method: 'POST',
                 credentials: 'include',
             });

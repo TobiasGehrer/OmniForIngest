@@ -5,10 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.http.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -16,19 +15,17 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class CoinService {
-    private final Logger logger = LoggerFactory.getLogger(CoinService.class);
-    private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
-
-    @Value("${wallet.service.url:http://localhost:8083}")
-    private String walletServiceUrl;
-
     private static final Map<Integer, Integer> RANK_REWARDS = Map.of(
             1, 100, // 1st place: 100 coins
             2, 75, // 2nd place: 75 coins
             3, 50, // 3rd place: 50 coins
             4, 25 // 4th place: 25 coins
     );
+    private final Logger logger = LoggerFactory.getLogger(CoinService.class);
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    @Value("${wallet.service.url:http://localhost:8083}")
+    private String walletServiceUrl;
 
     public CoinService() {
         this.restTemplate = new RestTemplate();
@@ -121,12 +118,19 @@ public class CoinService {
             CompletableFuture<Integer> future = awardCoinsForRank(username, rank);
 
             try {
-                Integer coinsAwarded = RANK_REWARDS.get(rank);
+                Integer coinsAwarded = future.get(); // Wait for the async operation to complete
 
                 if (coinsAwarded != null) {
                     coinResults.put(username, coinsAwarded);
-                    logger.info("Queued {} coins for player {} (rank {})", coinsAwarded, username, rank);
+                    logger.info("Awarded {} coins to player {} (rank {})", coinsAwarded, username, rank);
+                } else {
+                    coinResults.put(username, 0);
+                    logger.warn("Failed to award coins to player {} (rank {})", username, rank);
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.error("Interrupted while awarding coins to player {}: {}", username, e.getMessage());
+                coinResults.put(username, 0);
             } catch (Exception e) {
                 logger.error("Error processing coin award for {}: {}", username, e.getMessage());
                 coinResults.put(username, 0);
@@ -134,5 +138,16 @@ public class CoinService {
         });
 
         return coinResults;
+    }
+
+    public CompletableFuture<Integer> addCoins(String username, int amount) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return addCoinsToWallet(username, amount);
+            } catch (Exception e) {
+                logger.error("Error adding {} coins to player {}: {}", amount, username, e.getMessage());
+                return null;
+            }
+        });
     }
 }

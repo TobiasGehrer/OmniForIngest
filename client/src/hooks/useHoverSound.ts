@@ -14,18 +14,30 @@ const useHoverSound = () => {
 
     // Create the audio context when the hook is first used
     useEffect(() => {
-        // Create AudioContext only when component mounts
-        const windowWithWebkit = window as WindowWithWebkitAudio;
-        const AudioContextClass = window.AudioContext || windowWithWebkit.webkitAudioContext;
-        const context = new AudioContextClass();
-        setAudioContext(context);
+        try {
+            // Create AudioContext only when component mounts
+            const windowWithWebkit = window as WindowWithWebkitAudio;
+            const AudioContextClass = window.AudioContext || windowWithWebkit.webkitAudioContext;
 
-        // Clean up when no longer needed
-        return () => {
-            if (context) {
-                context.close();
+            if (!AudioContextClass) {
+                console.warn('AudioContext is not supported in this browser');
+                return;
             }
-        };
+
+            const context = new AudioContextClass();
+            setAudioContext(context);
+
+            // Clean up when no longer needed
+            return () => {
+                if (context) {
+                    context.close().catch(err => {
+                        console.warn('Error closing AudioContext:', err);
+                    });
+                }
+            };
+        } catch (error) {
+            console.warn('Error creating AudioContext:', error);
+        }
     }, []);
 
     return () => {
@@ -43,9 +55,8 @@ const useHoverSound = () => {
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
 
-        // Control the volume (start silent, quickly rise to 30% volume, then fade out)
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
+        gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
 
         // Play the sound for 0.2 seconds

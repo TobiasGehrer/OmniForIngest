@@ -1,6 +1,7 @@
 package fhv.omni.gamelogic.service.game;
 
 import fhv.omni.gamelogic.service.game.enums.GameState;
+import fhv.omni.gamelogic.service.shop.ShopServiceClient;
 import fhv.omni.gamelogic.service.wallet.CoinService;
 import jakarta.websocket.Session;
 import org.slf4j.Logger;
@@ -19,30 +20,35 @@ import static fhv.omni.gamelogic.service.game.JsonUtils.objectMapper;
 
 @Service
 public class GameService {
+    private static final String MESSAGE_KEY = "message";
+    private static final String REASON_KEY = "reason";
+
     private final Logger logger = LoggerFactory.getLogger(GameService.class);
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleanupService = Executors.newSingleThreadScheduledExecutor();
     private final CoinService coinService;
+    private final ShopServiceClient shopServiceClient;
 
-    public GameService(CoinService coinService) {
+    public GameService(CoinService coinService, ShopServiceClient shopServiceClient) {
         this.coinService = coinService;
+        this.shopServiceClient = shopServiceClient;
         cleanupService.scheduleAtFixedRate(this::cleanupEmptyRooms, 1, 2, TimeUnit.MINUTES);
     }
 
-    public boolean connect(String username, String mapId, Session session) {
+    public synchronized boolean connect(String username, String mapId, Session session) {
         GameRoom room = gameRooms.get(mapId);
         boolean roomRecreated = false;
-        
+
         if (room != null && room.isShuttingDown()) {
             logger.info("Removing shutting down room {} to allow recreation", mapId);
             gameRooms.remove(mapId);
             room = null;
             roomRecreated = true;
         }
-        
+
         if (room == null) {
             logger.info("Creating new game room for map {} (recreation: {})", mapId, roomRecreated);
-            room = new GameRoom(mapId, coinService);
+            room = new GameRoom(mapId, coinService, shopServiceClient);
             gameRooms.put(mapId, room);
         }
 
@@ -81,44 +87,20 @@ public class GameService {
         }
     }
 
-    public int getActiveRoomCount() {
-        return gameRooms.size();
-    }
-
-    public int getTotalPlayerCount() {
-        return gameRooms.values().stream()
-                .mapToInt(GameRoom::getPlayerCount)
-                .sum();
-    }
-
-    public Map<String, Object> getDetailedRoomStats() {
-        Map<String, Object> stats = new ConcurrentHashMap<>();
-        gameRooms.forEach((mapId, room) -> {
-            Map<String, Object> roomInfo = new HashMap<>();
-            roomInfo.put("playerCount", room.getPlayerCount());
-            roomInfo.put("maxPlayers", 4);
-            roomInfo.put("gameState", room.getGameState().toString());
-            roomInfo.put("isFull", room.isFull());
-            stats.put(mapId, roomInfo);
-        });
-
-        return stats;
-    }
-
     private void sendConnectionFailedMessage(Session session, GameRoom room) {
         try {
             Map<String, Object> errorMessage = new HashMap<>();
             errorMessage.put("type", "connection_failed");
 
             if (room.isFull()) {
-                errorMessage.put("reason", "room_full");
-                errorMessage.put("message", "Room is full (max 4 players)");
+                errorMessage.put(REASON_KEY, "room_full");
+                errorMessage.put(MESSAGE_KEY, "Room is full (max 4 players)");
             } else if (room.getGameState() == GameState.PLAYING || room.getGameState() == GameState.COUNTDOWN) {
-                errorMessage.put("reason", "game_in_progress");
-                errorMessage.put("message", "Game is in progress");
+                errorMessage.put(REASON_KEY, "game_in_progress");
+                errorMessage.put(MESSAGE_KEY, "Game is in progress");
             } else {
-                errorMessage.put("reason", "unknown");
-                errorMessage.put("message", "Unable to join room");
+                errorMessage.put(REASON_KEY, "unknown");
+                errorMessage.put(MESSAGE_KEY, "Unable to join room");
             }
 
             String json = objectMapper.writeValueAsString(errorMessage);
@@ -149,7 +131,7 @@ public class GameService {
     }
 
     public void shutdown() {
-        logger.info("Shutting down GameService - closing {} rooms",  gameRooms.size());
+        logger.info("Shutting down GameService - closing {} rooms", gameRooms.size());
 
         gameRooms.values().forEach(GameRoom::shutdown);
         gameRooms.clear();

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import PlayerManager from './PlayerManager';
 import EffectsManager from './EffectsManager';
-import eventBus from "../../../utils/eventBus.ts";
+import eventBus from '../../../utils/eventBus.ts';
 
 export interface TriggerZoneConfig {
     zoneType: string;
@@ -15,18 +15,20 @@ export interface TriggerZoneConfig {
 }
 
 export default class TriggerZoneManager {
-    private scene: Phaser.Scene;
-    private playerManager: PlayerManager;
+    private readonly scene: Phaser.Scene;
+    private readonly playerManager: PlayerManager;
     private effectsManager?: EffectsManager;
     private readonly triggerZones: Phaser.Physics.Arcade.Group;
-    private activeZoneTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
-    private healingTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
-    private damageTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
-    private poisonCloudZones: Set<string> = new Set();
+    private readonly activeZoneTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
+    private readonly healingTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
+    private readonly damageTimers: Map<string, Phaser.Time.TimerEvent> = new Map();
+    private readonly poisonCloudZones: Set<string> = new Set();
     private readonly HEAL_INTERVAL = 3000;
     private readonly HEAL_AMOUNT = 1;
     private readonly DAMAGE_INTERVAL = 600;
     private readonly DAMAGE_AMOUNT = 1;
+    private collisionSetupTimer?: number | null = null;
+    private hasLoggedWarning: boolean = false;
 
     constructor(scene: Phaser.Scene, playerManager: PlayerManager, effectsManager?: EffectsManager) {
         this.scene = scene;
@@ -64,6 +66,15 @@ export default class TriggerZoneManager {
             });
         }
         this.poisonCloudZones.clear();
+
+        // Clear collision setup timer if it exists
+        if (this.collisionSetupTimer) {
+            clearTimeout(this.collisionSetupTimer);
+            this.collisionSetupTimer = null;
+        }
+
+        // Reset warning flag
+        this.hasLoggedWarning = false;
 
         this.triggerZones.clear(true, true);
     }
@@ -126,7 +137,13 @@ export default class TriggerZoneManager {
     /**
      * Sets up collision detection with player - separated for clarity
      */
-    private setupPlayerCollision(retryCount: number = 0): void {
+    private setupPlayerCollision(): void {
+        // Store a reference to the timer so we can clear it if needed
+        if (this.collisionSetupTimer) {
+            clearTimeout(this.collisionSetupTimer);
+            this.collisionSetupTimer = null;
+        }
+
         const localPlayer = this.playerManager.getLocalPlayerSprite();
         if (localPlayer) {
             this.scene.physics.add.overlap(
@@ -137,13 +154,22 @@ export default class TriggerZoneManager {
                 undefined,
                 this
             );
-        } else if (retryCount < 10) {
-            setTimeout(() => this.setupPlayerCollision(retryCount + 1), 100);
-            if (retryCount === 0) {
-                console.warn('Local player sprite not found - will retry collision detection setup');
-            }
+            console.log('Collision detection set up successfully');
         } else {
-            console.warn('Local player sprite not found after retries - collision detection not set up');
+            // Instead of a fixed number of retries, we'll keep trying until the scene is destroyed
+            // or the player sprite becomes available
+            if (!this.hasLoggedWarning) {
+                console.warn('Local player sprite not found - will retry collision detection setup');
+                this.hasLoggedWarning = true;
+            }
+
+            // Schedule another attempt in 200ms
+            this.collisionSetupTimer = setTimeout(() => {
+                // Only retry if the scene is still active
+                if (this.scene?.scene.isActive()) {
+                    this.setupPlayerCollision();
+                }
+            }, 200) as unknown as number;
         }
     }
 

@@ -8,4 +8,5 @@ public record AddCoinsResponse(
         @NotNull @Positive Integer coinsAdded,
         @NotNull Integer totalCoins,
         String message
-) {}
+) {
+}

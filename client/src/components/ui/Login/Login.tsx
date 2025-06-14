@@ -1,6 +1,7 @@
 import {useRef, useState} from 'react';
 import './Login.css'
 import useHoverSound from '../../../hooks/useHoverSound';
+import {getApiBaseUrl} from '../../../utils/apiBaseUrl';
 
 interface AuthFormProps {
     onAuthSuccess: () => void;
@@ -16,6 +17,7 @@ function Login({onAuthSuccess}: AuthFormProps) {
         username: ''
     });
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     const [isValidating, setIsValidating] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const playHoverSound = useHoverSound();
@@ -86,6 +88,7 @@ function Login({onAuthSuccess}: AuthFormProps) {
             try {
                 setIsSubmitting(true);
                 setError('');
+                setSuccessMessage('');
 
                 const payload = {
                     username: formData.username,
@@ -96,7 +99,7 @@ function Login({onAuthSuccess}: AuthFormProps) {
                     }),
                 };
 
-                const endpoint = `http://localhost:8080/${isLogin ? 'login' : 'register'}`;
+                const endpoint = `${getApiBaseUrl()}/${isLogin ? 'login' : 'register'}`;
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -119,7 +122,18 @@ function Login({onAuthSuccess}: AuthFormProps) {
                 const data = await response.json();
                 console.log('Authentication successful:', data);
 
-                onAuthSuccess();
+                if (isLogin) {
+                    onAuthSuccess();
+                } else {
+                    setIsLogin(true);
+                    setSuccessMessage('Registration successful! Please log in.');
+                    setFormData({
+                        email: '',
+                        password: '',
+                        confirmPassword: '',
+                        username: ''
+                    });
+                }
 
             } catch (err) {
                 console.error('Authentication error:', err);
@@ -207,6 +221,11 @@ function Login({onAuthSuccess}: AuthFormProps) {
                      aria-live="assertive">
                     {error}
                 </div>
+                {successMessage && (
+                    <div className="login__success" role="status" aria-live="polite">
+                        {successMessage}
+                    </div>
+                )}
 
                 <button
                     type="submit"

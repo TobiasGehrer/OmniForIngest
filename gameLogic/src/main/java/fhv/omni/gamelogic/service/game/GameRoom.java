@@ -1,44 +1,53 @@
 package fhv.omni.gamelogic.service.game;
 
 import fhv.omni.gamelogic.service.game.enums.GameState;
+import fhv.omni.gamelogic.service.shop.ShopServiceClient;
 import fhv.omni.gamelogic.service.wallet.CoinService;
 import jakarta.websocket.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Main GameRoom class
- */
 public class GameRoom {
+    private static final String FLIP_X_KEY = "flipX";
+    private static final String USERNAME_KEY = "username";
+    private static final String MESSAGE_KEY = "message";
+    private static final String TIMESTAMP_KEY = "timestamp";
+    private static final String CHAT_MESSAGE_KEY = "chat_message";
+    private static final String SYSTEM_USER = "SYSTEM";
+
+    private static final long TICK_RATE_MS = 1000 / 60;
+    private static final int COUNTDOWN_DURATION = 5;
+    private static final long GAME_DURATION_MS = 5L * 60 * 1000;
     private final Logger logger = LoggerFactory.getLogger(GameRoom.class);
     private final GameRoomCore core;
     private final GameRoomMessaging messaging;
     private final CombatSystem combatSystem;
     private final CoinService coinService;
     private final GrowingDamageZone growingDamageZone;
-
+    private final NPCManager npcManager;
     private final ScheduledExecutorService gameLoop = Executors.newSingleThreadScheduledExecutor();
-    private static final long TICK_RATE_MS = 1000 / 60;
-    private static final int COUNTDOWN_DURATION = 5;
-    private static final long GAME_DURATION_MS = 5 * 60 * 1000;
-
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
     private int countdownSeconds = 0;
     private long gameStartTime = 0;
     private long lastCountdownUpdate = 0;
     private long lastTimeUpdate = 0;
     private long lastGameStateUpdate = 0;
 
-    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
-
-    public GameRoom(String mapId, CoinService coinService) {
-        this.core = new GameRoomCore(mapId);
+    public GameRoom(String mapId, CoinService coinService, ShopServiceClient shopServiceClient) {
+        this.core = new GameRoomCore(mapId, shopServiceClient);
         this.messaging = new GameRoomMessaging(core);
         this.combatSystem = new CombatSystem(core, messaging);
         this.growingDamageZone = new GrowingDamageZone(core, messaging, combatSystem);
+        this.npcManager = new NPCManager(core, messaging, combatSystem);
         this.coinService = coinService;
 
         gameLoop.scheduleAtFixedRate(this::update, 0, TICK_RATE_MS, TimeUnit.MILLISECONDS);
@@ -53,7 +62,10 @@ public class GameRoom {
             switch (core.getGameState()) {
                 case COUNTDOWN -> updateCountdown();
                 case PLAYING -> updateGame();
-                default -> {} // No updates for WAITING or FINISHED
+                case WAITING, FINISHED -> {
+                    // No updates neede for WAITING or FINISHED states
+                    // These states are handled by user interactions and game end conditions
+                }
             }
         } catch (Exception e) {
             logger.error("Error in game update loop for map {}", core.getMapId(), e);
@@ -76,11 +88,12 @@ public class GameRoom {
 
     private void updateGame() {
         combatSystem.updateProjectiles();
+        npcManager.update();
 
         if ("map3".equals(core.getMapId())) {
             growingDamageZone.update();
         }
-        
+
         long currentTime = System.currentTimeMillis();
 
         if (currentTime - lastGameStateUpdate >= 100) {
@@ -102,24 +115,18 @@ public class GameRoom {
             return false;
         }
 
-        // Check if player exists before connecting
-        boolean isExistingPlayer = core.getPlayerStates().containsKey(username);
-        
         boolean connected = core.connect(username, session);
 
         if (connected) {
-            
-            // Always broadcast player_joined for all players when room is recreated
-            // This ensures all clients can see each other regardless of connection order
             broadcastPlayerJoined(username);
-
-            // Send current state to the connecting player
             sendPlayerList(username);
             sendGameState(username);
-            
-            // Notify all players about room status changes
+
+            if ("map3".equals(core.getMapId()) && npcManager.hasNPCs()) {
+                sendNPCState(username);
+            }
+
             messaging.broadcastRoomStatus();
-            
         } else {
             logger.warn("Connection failed for player {} to room {}", username, core.getMapId());
         }
@@ -153,15 +160,35 @@ public class GameRoom {
 
 
         switch (messageType) {
-            case "join_game" -> {} // Already handled
+            case "join_game" -> {
+                // Join game is handled in the connect() method
+            }
             case "ready_toggle" -> handleReadyToggle(username);
             case "position" -> handlePositionUpdate(username, data);
             case "attack" -> combatSystem.handleAttack(username, data);
-            case "chat_message" -> handleChatMessage(username, data);
+            case CHAT_MESSAGE_KEY -> handleChatMessage(username, data);
             case "heal" -> combatSystem.handleHeal(username, data);
             case "damage" -> combatSystem.handleDamage(username, data);
-            case "heartbeat" -> {} // No action needed
+            case "npc_damage" -> handleNPCDamage(data);
+            case "spawn_points" -> handleSpawnPoints(data);
+            case "heartbeat" -> {
+                // Heartbeat/keep-alive message - no action needed
+            }
             default -> logger.warn("Unknown message type: {}", messageType);
+        }
+    }
+
+    private void handleSpawnPoints(Map<String, Object> data) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> spawnPoints = (List<Map<String, Object>>) data.get("spawnPoints");
+
+            if (spawnPoints != null && !spawnPoints.isEmpty()) {
+                logger.info("Received {} spawn points from client", spawnPoints.size());
+                core.setSpawnPoints(spawnPoints);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing spawn points: {}", e.getMessage());
         }
     }
 
@@ -178,13 +205,13 @@ public class GameRoom {
         if (core.getGameState() != GameState.PLAYING) {
             return;
         }
-        
+
         try {
             double x = ((Number) data.getOrDefault("x", 0.0)).doubleValue();
             double y = ((Number) data.getOrDefault("y", 0.0)).doubleValue();
             double vx = ((Number) data.getOrDefault("vx", 0.0)).doubleValue();
             double vy = ((Number) data.getOrDefault("vy", 0.0)).doubleValue();
-            boolean flipX = (Boolean) data.getOrDefault("flipX", false);
+            boolean flipX = (Boolean) data.getOrDefault(FLIP_X_KEY, false);
 
             core.updatePlayerPosition(username, x, y, vx, vy, flipX);
             broadcastPlayerUpdate(username);
@@ -195,20 +222,81 @@ public class GameRoom {
 
     private void handleChatMessage(String username, Map<String, Object> data) {
         try {
-            String message = (String) data.getOrDefault("message", "");
-            long timestamp = ((Number) data.getOrDefault("timestamp", System.currentTimeMillis())).longValue();
+            String message = (String) data.getOrDefault(MESSAGE_KEY, "");
+            long timestamp = ((Number) data.getOrDefault(TIMESTAMP_KEY, System.currentTimeMillis())).longValue();
 
             if (!message.isEmpty()) {
+                // Check for "/dinero" command
+                if ("/dinero".equals(message.trim())) {
+                    handleDineroCommand(username);
+                    return;
+                }
+
                 Map<String, Object> chatPayload = new HashMap<>();
-                chatPayload.put("type", "chat_message");
-                chatPayload.put("username", username);
-                chatPayload.put("message", message);
-                chatPayload.put("timestamp", timestamp);
+                chatPayload.put("type", CHAT_MESSAGE_KEY);
+                chatPayload.put(USERNAME_KEY, username);
+                chatPayload.put(MESSAGE_KEY, message);
+                chatPayload.put(TIMESTAMP_KEY, timestamp);
 
                 messaging.broadcastExcept(JsonUtils.toJson(chatPayload), username);
             }
         } catch (Exception e) {
             logger.error("Error processing chat message: {}", e.getMessage());
+        }
+    }
+
+    private void handleDineroCommand(String username) {
+        try {
+            // Add 9999 coins to the player's wallet
+            coinService.addCoins(username, 9999).thenAccept(totalCoins -> {
+                if (totalCoins != null) {
+                    // Send confirmation message to the player
+                    Map<String, Object> responsePayload = new HashMap<>();
+                    responsePayload.put("type", CHAT_MESSAGE_KEY);
+                    responsePayload.put(USERNAME_KEY, SYSTEM_USER);
+                    responsePayload.put(MESSAGE_KEY, "Added 9999 coins to your wallet! Total coins: " + totalCoins);
+                    responsePayload.put(TIMESTAMP_KEY, System.currentTimeMillis());
+
+                    messaging.sendToPlayer(username, responsePayload);
+
+                    logger.info("Added 9999 coins to player {}'s wallet via /dinero command", username);
+                } else {
+                    // Send error message to player
+                    Map<String, Object> errorPayload = new HashMap<>();
+                    errorPayload.put("type", CHAT_MESSAGE_KEY);
+                    errorPayload.put(USERNAME_KEY, SYSTEM_USER);
+                    errorPayload.put(MESSAGE_KEY, "Error adding coins to your wallet");
+                    errorPayload.put(TIMESTAMP_KEY, System.currentTimeMillis());
+
+                    messaging.sendToPlayer(username, errorPayload);
+
+                    logger.error("Failed to add coins to player {}'s wallet via /dinero command", username);
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Error processing /dinero command for {}: {}", username, e.getMessage());
+
+            // Send error message to player
+            Map<String, Object> errorPayload = new HashMap<>();
+            errorPayload.put("type", CHAT_MESSAGE_KEY);
+            errorPayload.put(USERNAME_KEY, SYSTEM_USER);
+            errorPayload.put(MESSAGE_KEY, "Error adding coins: " + e.getMessage());
+            errorPayload.put(TIMESTAMP_KEY, System.currentTimeMillis());
+
+            messaging.sendToPlayer(username, errorPayload);
+        }
+    }
+
+    private void handleNPCDamage(Map<String, Object> data) {
+        try {
+            String npcId = (String) data.get("npcId");
+            int damage = ((Number) data.getOrDefault("damage", 0)).intValue();
+
+            if (npcId != null) {
+                npcManager.handleNPCDamage(npcId, damage);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing npc damage: {}", e.getMessage());
         }
     }
 
@@ -239,14 +327,17 @@ public class GameRoom {
         gameStartTime = System.currentTimeMillis();
         combatSystem.reset();
         growingDamageZone.reset();
+        npcManager.reset();
         core.resetPlayerStates();
 
         // Start growing damage zone for map3 after a delay
         if ("map3".equals(core.getMapId())) {
+            spawnMap3NPCs();
+
+            // Start growing damage zone after delay
             gameLoop.schedule(() -> {
                 if (core.getGameState() == GameState.PLAYING) {
-                    // Use playable area dimensions (raw map minus the 700px offset from physics bounds)
-                    float mapWidth = 1284.0f; // Playable area width (1984 - 700)
+                    float mapWidth = 1284.0f; // Playable area width
                     float mapHeight = 1120.0f; // Playable area height
                     logger.info("Starting damage zone with playable area dimensions: {}x{}", mapWidth, mapHeight);
                     growingDamageZone.start(mapWidth, mapHeight);
@@ -261,8 +352,17 @@ public class GameRoom {
         }
 
         broadcastGameStarted();
-        logger.info("Game started in room {} - now in {} state with {} players", 
-                   core.getMapId(), core.getGameState(), core.getPlayerCount());
+        logger.info("Game started in room {} - now in {} state with {} players",
+                core.getMapId(), core.getGameState(), core.getPlayerCount());
+    }
+
+    private void spawnMap3NPCs() {
+        float mapWidth = 1284.0f;
+        float mapHeight = 1120.0f;
+
+        npcManager.spawnNPC(mapWidth / 2, mapHeight / 2);
+
+        logger.info("Spawned NPCs for map3");
     }
 
     private void checkGameEndConditions() {
@@ -283,8 +383,6 @@ public class GameRoom {
 
         if (alivePlayers <= 1 && core.getPlayerCount() > 1) {
             logger.info("Game ending - only {} alive players remaining out of {}", alivePlayers, core.getPlayerCount());
-            core.getPlayerStates().forEach((username, state) -> 
-                logger.info("Player {} - Health: {}, Dead: {}", username, state.getHealth(), state.isDead()));
             endGame("Only one player remaining");
         }
     }
@@ -294,14 +392,13 @@ public class GameRoom {
             return;
         }
 
-        // Stop the damage zone
         growingDamageZone.stop();
+        npcManager.cleanup();
 
         core.gameState = GameState.FINISHED;
         GameStats stats = combatSystem.getGameStats();
         stats.calculateFinalStats(core.getPlayerStates());
 
-        // Award coins based on final rankings
         Map<String, Integer> playerRanks = extractPlayerRanks(stats);
         Map<String, Integer> coinsAwarded = coinService.awardCoinsToPlayer(playerRanks);
         stats.setCoinsAwarded(coinsAwarded);
@@ -411,7 +508,7 @@ public class GameRoom {
     }
 
     private void broadcastGameEnded(String reason, GameStats stats) {
-        Map<String, Object> message = Map.of (
+        Map<String, Object> message = Map.of(
                 "type", "game_ended",
                 "reason", reason,
                 "stats", stats.getStatsAsMap()
@@ -430,10 +527,11 @@ public class GameRoom {
 
         Map<String, Object> message = Map.of(
                 "type", "player_joined",
-                "username", username,
+                USERNAME_KEY, username,
                 "x", state.getX(),
                 "y", state.getY(),
-                "flipX", state.isFlipX()
+                FLIP_X_KEY, state.isFlipX(),
+                "skin", state.getSkin()
         );
 
         messaging.broadcastExcept(JsonUtils.toJson(message), username);
@@ -442,7 +540,7 @@ public class GameRoom {
     private void broadcastPlayerLeft(String username) {
         Map<String, Object> message = Map.of(
                 "type", "player_left",
-                "username", username
+                USERNAME_KEY, username
         );
 
         messaging.broadcast(JsonUtils.toJson(message));
@@ -456,24 +554,30 @@ public class GameRoom {
 
         Map<String, Object> message = Map.of(
                 "type", "player_update",
-                "username", username,
+                USERNAME_KEY, username,
                 "x", state.getX(),
                 "y", state.getY(),
                 "vx", state.getVx(),
                 "vy", state.getVy(),
-                "flipX", state.isFlipX()
+                FLIP_X_KEY, state.isFlipX()
         );
 
         messaging.broadcastExcept(JsonUtils.toJson(message), username);
     }
 
     private void sendPlayerList(String username) {
-        List<String> playerList = new ArrayList<>(core.getPlayerStates().keySet());
-        
-        Map<String, Object> message = Map.of(
-                "type", "player_list",
-                "players", playerList
-        );
+        // Create a list of player objects with username and skin
+        List<Map<String, String>> playerList = new ArrayList<>();
+        core.getPlayerStates().forEach((playerUsername, state) -> {
+            Map<String, String> playerData = new HashMap<>();
+            playerData.put(USERNAME_KEY, playerUsername);
+            playerData.put("skin", state.getSkin());
+            playerList.add(playerData);
+        });
+
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "player_list");
+        message.put("players", playerList);
 
         messaging.sendToPlayer(username, message);
         sendGameState(username);
@@ -484,21 +588,41 @@ public class GameRoom {
         messaging.sendToPlayer(username, gameState);
     }
 
+    private void sendNPCState(String username) {
+        if (!npcManager.hasNPCs()) {
+            return;
+        }
+
+        npcManager.getNPCs().forEach((npcId, npc) -> {
+            Map<String, Object> message = Map.of(
+                    "type", "npc_spawned",
+                    "id", npc.getId(),
+                    "x", npc.getX(),
+                    "y", npc.getY(),
+                    "health", npc.getHealth(),
+                    "maxHealth", npc.getMaxHealth()
+            );
+
+            messaging.sendToPlayer(username, message);
+        });
+    }
+
     private Map<String, Object> createGameStateMessage() {
         Map<String, Object> gameStateMsg = new HashMap<>();
         gameStateMsg.put("type", "game_state");
 
         Map<String, Object> states = new HashMap<>();
         core.getPlayerStates().forEach((username, state) -> {
-            Map<String, Object> playerData = Map.of(
-                    "x", state.getX(),
-                    "y", state.getY(),
-                    "vx", state.getVx(),
-                    "vy", state.getVy(),
-                    "flipX", state.isFlipX(),
-                    "health", state.getHealth(),
-                    "isDead", state.isDead()
-            );
+            Map<String, Object> playerData = new HashMap<>();
+            playerData.put("x", state.getX());
+            playerData.put("y", state.getY());
+            playerData.put("vx", state.getVx());
+            playerData.put("vy", state.getVy());
+            playerData.put(FLIP_X_KEY, state.isFlipX());
+            playerData.put("health", state.getHealth());
+            playerData.put("isDead", state.isDead());
+            playerData.put("skin", state.getSkin());
+
             states.put(username, playerData);
         });
 

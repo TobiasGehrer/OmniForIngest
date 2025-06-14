@@ -11,7 +11,7 @@ public record ShopItemDto(
         @NotNull Integer price,
         Boolean isUnlocked
 ) {
-    public static ShopItemDto fromEntity(ShopItem item,boolean isUnlocked) {
+    public static ShopItemDto fromEntity(ShopItem item, boolean isUnlocked) {
         return new ShopItemDto(
                 item.getItemId(),
                 item.getName(),

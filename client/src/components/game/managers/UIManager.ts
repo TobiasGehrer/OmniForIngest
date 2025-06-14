@@ -2,7 +2,7 @@ import WebSocketService from '../../services/WebSocketService.ts';
 import eventBus from '../../../utils/eventBus';
 
 export default class UIManager {
-    private websocket: WebSocketService;
+    private readonly websocket: WebSocketService;
     private readonly username: string;
 
     constructor(websocket: WebSocketService, username: string) {

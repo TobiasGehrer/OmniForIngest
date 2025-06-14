@@ -1,10 +1,54 @@
 # Changes
 
-##### 2025-06-09 0.18.0
+##### 2025-01-24 0.25.0
+
+- BUGFIX: Fixed event listener memory leaks when transitioning between scenes. [!37]
+- BUGFIX: Fixed "Cannot read properties of undefined" errors when changing skins after returning to menu. [!37]
+- BUGFIX: Fixed skin changes not being immediately visible without movement. [!37]
+- ENHANCEMENT: Added proper scene activity checks in Player, PlayerManager, and AnimationManager. [!37]
+- ENHANCEMENT: Improved skin persistence when transitioning between gameplay and menu scenes. [!37]
+
+##### 2025-06-12 0.24.0
+
+- ENHANCEMENT: SonarQube enhancements throughout the whole project [!39]
+
+##### 2025-06-12 0.24.0
+
+- FEATURE: Add skins to the game. [!36]
+
+##### 2025-06-12 0.23.0
+
+- FEATURE: Enhanced user interface components. [!34]
+- FEATURE: Added script to start all microservices on the server. [!34]
+- FEATURE: Added dynamic api endpoints depending on the environment. [!34]
+- 
+##### 2025-06-10 0.22.0
+
+- BUGFIX: Fixed WebSocket connection issues through gateway. [!33]
+- ENHANCEMENT: Corrected gateway WebSocket routing configuration. [!33]
+
+##### 2025-06-10 0.21.0
+
+- FEATURE: NPC for map3, who attacks nearby players. [!30]
+
+##### 2025-06-10 0.20.0
 
 - FEATURE: Growing damage zone system for map3. [!29]
 - FEATURE: Static damage and healing zones on map3 (transferred from map2). [!29]
 - ENHANCEMENT: Smooth particle transition system for damage zone effects. [!29]
+
+
+##### 2025-06-10 0.19.0
+
+- FEATURE: Growing damage zone system for map3. [!29]
+- FEATURE: Static damage and healing zones on map3 (transferred from map2). [!29]
+- ENHANCEMENT: Smooth particle transition system for damage zone effects. [!29]
+
+##### 2025-06-09 0.18.0
+
+- FEATURE: Transitioned Gateway from MVC -> Webflux [!28]
+- FEATURE: Added security to gameLogic [!28]
+- FEATURE: Gateway forwarding to gameLogic websockets and port updates [!28]
 
 ##### 2025-06-08 0.17.0
 

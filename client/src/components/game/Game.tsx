@@ -13,8 +13,9 @@ import GameLobbyUI from '../ui/GameLobbyUI/GameLobbyUI';
 import GameTimer from '../ui/GameTimer/GameTimer';
 import GameScoreboard from '../ui/GameScoreboard/GameScoreboard';
 import WebSocketService from '../services/WebSocketService.ts';
+import Shop from '../ui/Shop/Shop.tsx';
+import {getApiBaseUrl} from '../../utils/apiBaseUrl';
 import GameConfig = Phaser.Types.Core.GameConfig;
-import Shop from "../ui/Shop/Shop.tsx";
 
 interface GameProps {
     username?: string;
@@ -31,7 +32,7 @@ const Game: React.FC<GameProps> = () => {
     useEffect(() => {
         const fetchUserName = async () => {
             try {
-                const response = await fetch('http://localhost:8080/me', {
+                const response = await fetch(`${getApiBaseUrl()}/me`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -71,7 +72,7 @@ const Game: React.FC<GameProps> = () => {
         const handleStartGame = (data?: any) => {
             setGameMode('gameplay');
             // Store the map key in session storage to pass it to the GameplayScene
-            if (data && data.mapKey) {
+            if (data?.mapKey) {
                 sessionStorage.setItem('selectedMapKey', data.mapKey);
             }
         };
@@ -140,9 +141,8 @@ const Game: React.FC<GameProps> = () => {
 
         const game = new Phaser.Game(config);
 
-        if (gameMode === 'gameplay') {
-            game.registry.set('username', fetchedUserName);
-        }
+        // Always set username in registry regardless of game mode
+        game.registry.set('username', fetchedUserName);
 
         return () => {
             game.destroy(true);

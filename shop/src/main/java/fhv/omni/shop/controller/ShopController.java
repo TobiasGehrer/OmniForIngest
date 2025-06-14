@@ -1,9 +1,6 @@
 package fhv.omni.shop.controller;
 
-import fhv.omni.shop.dto.PlayerUnlocksDto;
-import fhv.omni.shop.dto.PurchaseRequest;
-import fhv.omni.shop.dto.PurchaseResponse;
-import fhv.omni.shop.dto.ShopItemDto;
+import fhv.omni.shop.dto.*;
 import fhv.omni.shop.service.ShopService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +15,7 @@ import java.util.Map;
 @RequestMapping("/api/shop")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:4173"}, allowCredentials = "true")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:4173", "https://omni.jware.at"}, allowCredentials = "true")
 public class ShopController {
     private final ShopService shopService;
 
@@ -79,5 +76,28 @@ public class ShopController {
                 "mapId", mapId,
                 "unlocked", unlocked
         ));
+    }
+
+    @GetMapping("/preferences/{username}")
+    public ResponseEntity<PlayerPreferenceDto> getPlayerPreference(@PathVariable String username) {
+        log.info("Getting player preference for user: {}", username);
+        PlayerPreferenceDto preference = shopService.getPlayerPreference(username);
+        return ResponseEntity.ok(preference);
+    }
+
+    @PostMapping("/preferences")
+    public ResponseEntity<PlayerPreferenceDto> updatePlayerPreference(@Valid @RequestBody UpdatePlayerPreferenceRequest request) {
+        log.info("Updating player preference: {} wants to select skin {}", request.username(), request.selectedSkin());
+
+        try {
+            PlayerPreferenceDto preference = shopService.updatePlayerPreference(request);
+            return ResponseEntity.ok(preference);
+        } catch (IllegalArgumentException e) {
+            log.error("Update preference failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Update preference failed for user {}: {}", request.username(), e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

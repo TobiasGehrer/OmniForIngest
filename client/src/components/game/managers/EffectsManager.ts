@@ -2,13 +2,13 @@ import Phaser from 'phaser';
 import PlayerManager from './PlayerManager';
 
 export default class EffectsManager {
-    private scene: Phaser.Scene;
-    private playerManager: PlayerManager;
+    private readonly scene: Phaser.Scene;
+    private readonly playerManager: PlayerManager;
     private healingInterval?: number;
     private damageInterval?: number;
     private healingSound?: Phaser.Sound.BaseSound;
-    private poisonCloudEmitters: Map<string, Phaser.GameObjects.Particles.ParticleEmitter> = new Map();
-    private fadeOutEmitters: Set<string> = new Set();
+    private readonly poisonCloudEmitters: Map<string, Phaser.GameObjects.Particles.ParticleEmitter> = new Map();
+    private readonly fadeOutEmitters: Set<string> = new Set();
     private readonly EFFECT_INTERVAL = 500;
 
     constructor(scene: Phaser.Scene, playerManager: PlayerManager) {
@@ -147,28 +147,24 @@ export default class EffectsManager {
     }
 
     public updateGrowingDamageZone(centerX: number, centerY: number, radius: number, mapWidth: number, mapHeight: number): void {
-        const lastRadius = this.scene.registry.get('lastZoneRadius') || 0;
-        const lastUpdateTime = this.scene.registry.get('lastZoneUpdateTime') || 0;
+        const lastRadius = this.scene.registry.get('lastZoneRadius') ?? 0;
+        const lastUpdateTime = this.scene.registry.get('lastZoneUpdateTime') ?? 0;
         const currentTime = Date.now();
         const radiusDifference = Math.abs(radius - lastRadius);
         const timeSinceLastUpdate = currentTime - lastUpdateTime;
 
         let shouldUpdate = false;
 
-        if (lastRadius === 0) {
-            shouldUpdate = true;
-        }
-        else if (radius < lastRadius && radiusDifference > 15 && timeSinceLastUpdate > 3000) {
-            shouldUpdate = true;
-        }
-        else if (radiusDifference > 30 && timeSinceLastUpdate > 5000) {
+        if (lastRadius === 0 || 
+            (radius < lastRadius && radiusDifference > 15 && timeSinceLastUpdate > 3000) || 
+            (radiusDifference > 30 && timeSinceLastUpdate > 5000)) {
             shouldUpdate = true;
         }
 
         if (shouldUpdate) {
             this.scene.registry.set('lastZoneRadius', radius);
             this.scene.registry.set('lastZoneUpdateTime', currentTime);
-            
+
             this.poisonCloudEmitters.forEach((_, key) => {
                 if (key.startsWith('zone_')) {
                     this.fadeOutEmitters.add(key);
@@ -176,120 +172,10 @@ export default class EffectsManager {
             });
 
             this.createGrowingZoneParticles(centerX, centerY, radius, mapWidth, mapHeight);
-            
+
             this.scene.time.delayedCall(500, () => {
                 this.fadeOutOldEmitters();
             });
-        }
-    }
-
-    private fadeOutOldEmitters(): void {
-        this.fadeOutEmitters.forEach(key => {
-            const emitter = this.poisonCloudEmitters.get(key);
-            if (emitter) {
-                // Gradually reduce alpha and then destroy
-                this.scene.tweens.add({
-                    targets: emitter,
-                    alpha: 0,
-                    duration: 1500,
-                    ease: 'Power2.easeOut',
-                    onComplete: () => {
-                        emitter.destroy();
-                        this.poisonCloudEmitters.delete(key);
-                    }
-                });
-            }
-        });
-        
-        this.fadeOutEmitters.clear();
-    }
-
-    private createGrowingZoneParticles(centerX: number, centerY: number, safeRadius: number, mapWidth: number, mapHeight: number): void {
-        // Create a unique version identifier for this set of particles
-        const version = Date.now();
-        const textureKey = 'poison_particle';
-
-        if (!this.scene.textures.exists(textureKey)) {
-            const graphics = this.scene.add.graphics();
-            const particleSize = 8;
-            graphics.fillStyle(0x88ff00, 0.7);
-            graphics.fillCircle(particleSize / 2, particleSize / 2, particleSize / 2);
-            graphics.generateTexture(textureKey, particleSize, particleSize);
-            graphics.destroy();
-        }
-
-        const gridSize = 100; // Reduced from 120 to 100 for ~44% more emitters
-        const emittersX = Math.ceil(mapWidth / gridSize);
-        const emittersY = Math.ceil(mapHeight / gridSize);
-
-        let emitterIndex = 0;
-
-        for (let x = 0; x < emittersX; x++) {
-            for (let y = 0; y < emittersY; y++) {
-                const gridX = x * gridSize + (gridSize / 2);
-                const gridY = y * gridSize + (gridSize / 2);
-
-                // Only create emitter if it's outside the safe zone
-                const distanceFromCenter = Math.sqrt(Math.pow(gridX - centerX, 2) + Math.pow(gridY - centerY, 2));
-
-                if (distanceFromCenter > safeRadius) {
-                    const zoneEmitter = this.scene.add.particles(gridX, gridY, textureKey, {
-                        speed: { min: 10, max: 20 },
-                        scale: { start: 0.9, end: 0.1 },
-                        alpha: { start: 0.6, end: 0 },
-                        lifespan: { min: 2500, max: 4000 },
-                        quantity: 4,
-                        frequency: 175,
-                        blendMode: 'ADD',
-                        emitZone: {
-                            type: 'random',
-                            source: new Phaser.Geom.Rectangle(-50, -50, 100, 100),
-                            quantity: 10
-                        },
-                        tint: [0x88ff00, 0x66dd00, 0x99ff33, 0x77cc33],
-                        rotate : { min: 0, max: 360 },
-                        gravityY: -1,
-                    });
-
-                    zoneEmitter.setDepth(99999);
-                    this.poisonCloudEmitters.set(`zone_${version}_${emitterIndex}`, zoneEmitter);
-                    emitterIndex++;
-                }
-            }
-        }
-
-        // Add additional ring emitters around the safe zone edge for better visual effect
-        const ringEmitters = 15;
-
-        for (let i = 0; i < ringEmitters; i++) {
-            const angle = (i / ringEmitters) * Math.PI * 2;
-            const ringRadius = safeRadius + 40; // Just outside the safe zone
-            const x = centerX + Math.cos(angle) * ringRadius;
-            const y = centerY + Math.sin(angle) * ringRadius;
-
-            // Only create ring emitters within the map bounds
-            if (x >= 0 && x <= mapWidth && y >= 0 && y <= mapHeight) {
-                const ringEmitter = this.scene.add.particles(x, y, textureKey, {
-                    speed: { min: 10, max: 20 },
-                    scale: { start: 0.9, end: 0.1 },
-                    alpha: { start: 0.6, end: 0 },
-                    lifespan: { min: 2500, max: 4000 },
-                    quantity: 4,
-                    frequency: 175,
-                    blendMode: 'ADD',
-                    emitZone: {
-                        type: 'random',
-                        source: new Phaser.Geom.Rectangle(-50, -50, 100, 100),
-                        quantity: 10
-                    },
-                    tint: [0x88ff00, 0x66dd00, 0x99ff33, 0x77cc33],
-                    rotate: { min: 0, max: 360 },
-                    gravityY: -1
-                });
-
-                ringEmitter.setDepth(99999);
-                this.poisonCloudEmitters.set(`zone_ring_${version}_${i}`, ringEmitter);
-            }
         }
     }
 
@@ -329,6 +215,146 @@ export default class EffectsManager {
         });
         this.poisonCloudEmitters.clear();
         this.fadeOutEmitters.clear();
+    }
+
+    private fadeOutOldEmitters(): void {
+        this.fadeOutEmitters.forEach(key => {
+            const emitter = this.poisonCloudEmitters.get(key);
+            if (emitter) {
+                // Gradually reduce alpha and then destroy
+                this.scene.tweens.add({
+                    targets: emitter,
+                    alpha: 0,
+                    duration: 1500,
+                    ease: 'Power2.easeOut',
+                    onComplete: () => {
+                        emitter.destroy();
+                        this.poisonCloudEmitters.delete(key);
+                    }
+                });
+            }
+        });
+
+        this.fadeOutEmitters.clear();
+    }
+
+    private createGrowingZoneParticles(centerX: number, centerY: number, safeRadius: number, mapWidth: number, mapHeight: number): void {
+        // Create a unique version identifier for this set of particles
+        const version = Date.now();
+        const textureKey = 'poison_particle';
+
+        if (!this.scene.textures.exists(textureKey)) {
+            const graphics = this.scene.add.graphics();
+            const particleSize = 8;
+            graphics.fillStyle(0x88ff00, 0.7);
+            graphics.fillCircle(particleSize / 2, particleSize / 2, particleSize / 2);
+            graphics.generateTexture(textureKey, particleSize, particleSize);
+            graphics.destroy();
+        }
+
+        const gridSize = 100; // Reduced from 120 to 100 for ~44% more emitters
+        const emittersX = Math.ceil(mapWidth / gridSize);
+        const emittersY = Math.ceil(mapHeight / gridSize);
+
+        let emitterIndex = 0;
+
+        for (let x = 0; x < emittersX; x++) {
+            for (let y = 0; y < emittersY; y++) {
+                const gridX = x * gridSize + (gridSize / 2);
+                const gridY = y * gridSize + (gridSize / 2);
+
+                // Only create emitter if it's outside the safe zone
+                const distanceFromCenter = Math.sqrt(Math.pow(gridX - centerX, 2) + Math.pow(gridY - centerY, 2));
+
+                if (distanceFromCenter > safeRadius) {
+                    const zoneEmitter = this.scene.add.particles(gridX, gridY, textureKey, {
+                        speed: {
+                            min: 10,
+                            max: 20
+                        },
+                        scale: {
+                            start: 0.9,
+                            end: 0.1
+                        },
+                        alpha: {
+                            start: 0.6,
+                            end: 0
+                        },
+                        lifespan: {
+                            min: 2500,
+                            max: 4000
+                        },
+                        quantity: 4,
+                        frequency: 175,
+                        blendMode: 'ADD',
+                        emitZone: {
+                            type: 'random',
+                            source: new Phaser.Geom.Rectangle(-50, -50, 100, 100),
+                            quantity: 10
+                        },
+                        tint: [0x88ff00, 0x66dd00, 0x99ff33, 0x77cc33],
+                        rotate: {
+                            min: 0,
+                            max: 360
+                        },
+                        gravityY: -1,
+                    });
+
+                    zoneEmitter.setDepth(99999);
+                    this.poisonCloudEmitters.set(`zone_${version}_${emitterIndex}`, zoneEmitter);
+                    emitterIndex++;
+                }
+            }
+        }
+
+        // Add additional ring emitters around the safe zone edge for better visual effect
+        const ringEmitters = 15;
+
+        for (let i = 0; i < ringEmitters; i++) {
+            const angle = (i / ringEmitters) * Math.PI * 2;
+            const ringRadius = safeRadius + 40; // Just outside the safe zone
+            const x = centerX + Math.cos(angle) * ringRadius;
+            const y = centerY + Math.sin(angle) * ringRadius;
+
+            // Only create ring emitters within the map bounds
+            if (x >= 0 && x <= mapWidth && y >= 0 && y <= mapHeight) {
+                const ringEmitter = this.scene.add.particles(x, y, textureKey, {
+                    speed: {
+                        min: 10,
+                        max: 20
+                    },
+                    scale: {
+                        start: 0.9,
+                        end: 0.1
+                    },
+                    alpha: {
+                        start: 0.6,
+                        end: 0
+                    },
+                    lifespan: {
+                        min: 2500,
+                        max: 4000
+                    },
+                    quantity: 4,
+                    frequency: 175,
+                    blendMode: 'ADD',
+                    emitZone: {
+                        type: 'random',
+                        source: new Phaser.Geom.Rectangle(-50, -50, 100, 100),
+                        quantity: 10
+                    },
+                    tint: [0x88ff00, 0x66dd00, 0x99ff33, 0x77cc33],
+                    rotate: {
+                        min: 0,
+                        max: 360
+                    },
+                    gravityY: -1
+                });
+
+                ringEmitter.setDepth(99999);
+                this.poisonCloudEmitters.set(`zone_ring_${version}_${i}`, ringEmitter);
+            }
+        }
     }
 
     private addHealingParticles(x: number, y: number): void {

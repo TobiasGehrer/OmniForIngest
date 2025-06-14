@@ -1,6 +1,8 @@
 package fhv.omni.gamelogic.service.game;
 
 public class PlayerState {
+    private static final int MAX_HEALTH = 4;
+    private static final String DEFAULT_SKIN = "player_0";
     private float x;
     private float y;
     private float vx;
@@ -8,8 +10,7 @@ public class PlayerState {
     private boolean flipX;
     private int health;
     private boolean isDead;
-
-    private static final int MAX_HEALTH = 4;
+    private String skin = DEFAULT_SKIN;
 
     public PlayerState(float x, float y, float vx, float vy, boolean flipX) {
         this.x = x;
@@ -19,6 +20,17 @@ public class PlayerState {
         this.flipX = flipX;
         this.health = MAX_HEALTH;
         this.isDead = false;
+    }
+
+    public PlayerState(float x, float y, float vx, float vy, boolean flipX, String skin) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.flipX = flipX;
+        this.health = MAX_HEALTH;
+        this.isDead = false;
+        this.skin = skin != null && !skin.isEmpty() ? skin : DEFAULT_SKIN;
     }
 
     public synchronized boolean takeDamage(int damage) {
@@ -110,7 +122,7 @@ public class PlayerState {
     }
 
     public void setHealth(int health) {
-        this.health = Math.max(0, Math.min(health, MAX_HEALTH));
+        this.health = Math.clamp(health, 0, MAX_HEALTH);
         if (this.health <= 0) {
             this.isDead = true;
         } else if (this.isDead && this.health > 0) {
@@ -131,5 +143,13 @@ public class PlayerState {
 
     public int getMaxHealth() {
         return MAX_HEALTH;
+    }
+
+    public String getSkin() {
+        return skin;
+    }
+
+    public void setSkin(String skin) {
+        this.skin = skin != null && !skin.isEmpty() ? skin : DEFAULT_SKIN;
     }
 }

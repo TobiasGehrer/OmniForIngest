@@ -11,9 +11,7 @@ export default class MapManager {
     }
 
     public static getInstance(): MapManager {
-        if (!MapManager.instance) {
-            MapManager.instance = new MapManager();
-        }
+        MapManager.instance ??= new MapManager();
         return MapManager.instance;
     }
 

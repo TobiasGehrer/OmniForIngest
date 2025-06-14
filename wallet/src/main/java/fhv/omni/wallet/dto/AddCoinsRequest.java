@@ -6,4 +6,5 @@ import jakarta.validation.constraints.Positive;
 public record AddCoinsRequest(
         @NotNull String username,
         @NotNull @Positive Integer amount
-) {}
+) {
+}

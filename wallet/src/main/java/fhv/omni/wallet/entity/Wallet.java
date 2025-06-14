@@ -32,6 +32,11 @@ public class Wallet {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    public Wallet(String username) {
+        this.username = username;
+        this.coins = 0;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -41,10 +46,5 @@ public class Wallet {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
-    }
-
-    public Wallet(String username) {
-        this.username = username;
-        this.coins = 0;
     }
 }

@@ -6,11 +6,13 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 public class GrowingDamageZone {
+    private static final long UPDATE_INTERVAL = 1000; // Update every 1 second
+    private static final long DAMAGE_GRACE_PERIOD = 10000; // 10 seconds grace period before damage starts
+    private static final float DAMAGE_PER_TICK = 1.0f;
     private final Logger logger = LoggerFactory.getLogger(GrowingDamageZone.class);
     private final GameRoomCore core;
     private final GameRoomMessaging messaging;
     private final CombatSystem combatSystem;
-
     private boolean isActive = false;
     private boolean isShrinking = false;
     private boolean isDamaging = false;
@@ -21,9 +23,6 @@ public class GrowingDamageZone {
     private float targetRadius;
     private float shrinkRate; // units per second
     private long lastUpdate = 0;
-    private static final long UPDATE_INTERVAL = 1000; // Update every 1 second
-    private static final long DAMAGE_GRACE_PERIOD = 10000; // 10 seconds grace period before damage starts
-    private static final float DAMAGE_PER_TICK = 1.0f;
 
     public GrowingDamageZone(GameRoomCore core, GameRoomMessaging messaging, CombatSystem combatSystem) {
         this.core = core;
@@ -48,7 +47,7 @@ public class GrowingDamageZone {
         this.isDamaging = false; // Start with no damage during grace period
         this.lastUpdate = System.currentTimeMillis();
         this.damageStartTime = this.lastUpdate + DAMAGE_GRACE_PERIOD;
-        
+
         logger.info("Starting growing damage zone - Map size: {}x{}, Center: ({}, {}), Initial radius: {}, Target radius: {}",
                 mapWidth, mapHeight, centerX, centerY, currentRadius, targetRadius);
 
@@ -65,13 +64,13 @@ public class GrowingDamageZone {
 
         if (currentTime - lastUpdate >= UPDATE_INTERVAL) {
             float oldRadius = currentRadius;
-            
+
             // Check if damage period should start
             if (!isDamaging && currentTime >= damageStartTime) {
                 isDamaging = true;
                 logger.info("Growing damage zone grace period ended - damage is now active");
             }
-            
+
             // Only shrink if still in shrinking phase
             if (isShrinking) {
                 float deltaTime = (currentTime - lastUpdate) / 1000.0f;
@@ -103,7 +102,7 @@ public class GrowingDamageZone {
             logger.warn("checkPlayersInZone called during grace period - this should not happen!");
             return;
         }
-        
+
         core.getPlayerStates().forEach((username, playerState) -> {
             if (playerState.isDead()) {
                 return;
@@ -118,13 +117,13 @@ public class GrowingDamageZone {
             // If player is outside safe zone, damage them
             if (distance > currentRadius) {
                 boolean died = playerState.takeDamage((int) DAMAGE_PER_TICK);
-                
+
                 // If player died from zone damage, record it in combat system for scoreboard
                 if (died) {
                     combatSystem.getGameStats().recordDeath(username);
                     logger.info("Player {} eliminated by damage zone", username);
                 }
-                
+
                 broadcastDamageEvent(username, playerState.getHealth(), died);
             }
         });

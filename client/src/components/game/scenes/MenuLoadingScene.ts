@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import menuMusicAsset from '/assets/audio/music/menu_music.mp3';
-import notificationFx from '/assets/audio/fx/notification.mp3';
+import menuMusicAsset from '../../../../public/assets/audio/music/menu_music.mp3';
+import notificationFx from '../../../../public/assets/audio/fx/notification.mp3';
+import {getApiBaseUrl, getShopBaseUrl} from '../../../utils/apiBaseUrl';
+import AnimationManager from '../managers/AnimationManager';
 
 export default class MenuLoadingScene extends Phaser.Scene {
     private tipsText: Phaser.GameObjects.Text | undefined;
@@ -11,6 +13,7 @@ export default class MenuLoadingScene extends Phaser.Scene {
     private progressBg: Phaser.GameObjects.Graphics | undefined;
     private loadingDots: Phaser.GameObjects.Text | undefined;
     private floatingParticles: Phaser.GameObjects.Group | undefined;
+    private fetchingUserData: boolean = false;
 
     constructor() {
         super('LoadingScene');
@@ -268,7 +271,7 @@ export default class MenuLoadingScene extends Phaser.Scene {
 
         this.load.on('complete', () => {
             this.loadingComplete = true;
-            this.showContinueButton();
+            this.fetchUserDataAndSkin();
         });
     }
 
@@ -278,10 +281,13 @@ export default class MenuLoadingScene extends Phaser.Scene {
         this.load.tilemapTiledJSON('menu', 'assets/tiles/menu.json');
         this.load.audio('menu_music', menuMusicAsset);
         this.load.audio('notification_sound', notificationFx);
-        this.load.spritesheet('player', 'assets/sprites/characters/player.png', {
-            frameWidth: 24,
-            frameHeight: 24,
-        });
+        // Load all player skin sprites
+        for (let i = 0; i <= 25; i++) {
+            this.load.spritesheet(`player_${i}`, `assets/sprites/characters/player_${i}.png`, {
+                frameWidth: 24,
+                frameHeight: 24,
+            });
+        }
         this.load.spritesheet('shopkeeper', 'assets/sprites/characters/shopkeeper.png', {
             frameWidth: 24,
             frameHeight: 24,
@@ -345,6 +351,12 @@ export default class MenuLoadingScene extends Phaser.Scene {
         this.load.spritesheet('lantern_light_true', 'assets/sprites/environment/lantern_light_true.png', {
             frameWidth: 12,
             frameHeight: 45,
+        });
+        this.load.spritesheet('projectile', 'assets/sprites/fx/projectile.png', {
+            frameWidth: 32,
+            frameHeight: 20,
+            startFrame: 228,
+            endFrame: 231
         });
     }
 
@@ -437,5 +449,77 @@ export default class MenuLoadingScene extends Phaser.Scene {
                 this.scene.start('MenuScene');
             }
         });
+    }
+
+    private async fetchUserDataAndSkin() {
+        if (this.fetchingUserData) return;
+        this.fetchingUserData = true;
+
+        try {
+            // First get the username
+            const username = await this.getCurrentUsername();
+
+            // Then fetch the selected skin
+            if (username && username !== 'Unknown') {
+                await this.fetchSelectedSkin(username);
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+        } finally {
+            this.fetchingUserData = false;
+            this.showContinueButton();
+        }
+    }
+
+    private async getCurrentUsername(): Promise<string> {
+        // First check if username is in the game registry
+        const usernameFromRegistry = this.registry.get('username');
+        if (usernameFromRegistry) {
+            return usernameFromRegistry;
+        }
+
+        try {
+            const response = await fetch(`${getApiBaseUrl()}/me`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const username = data.username ?? 'Unknown';
+                // Store username in registry for future use
+                this.registry.set('username', username);
+                return username;
+            }
+        } catch (error) {
+            console.error('Error fetching username:', error);
+        }
+
+        return 'Unknown';
+    }
+
+    private async fetchSelectedSkin(username: string): Promise<void> {
+        try {
+            const response = await fetch(`${getShopBaseUrl()}/api/shop/preferences/${username}`, {
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const selectedSkin = data.selectedSkin;
+
+                // Store the selected skin in the registry
+                this.registry.set('selectedSkin', selectedSkin);
+
+                // Create animations for the skin
+                const animManager = new AnimationManager(this);
+                animManager.createAnimations(selectedSkin);
+            }
+        } catch (error) {
+            console.error('Error fetching selected skin:', error);
+        }
     }
 }

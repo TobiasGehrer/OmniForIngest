@@ -3,18 +3,20 @@ import PlayerManager from './PlayerManager';
 import NotificationManager from './NotificationManager';
 import ProjectileManager from './ProjectileManager';
 import SpawnPointManager from './SpawnPointManager.ts';
-import eventBus from "../../../utils/eventBus.ts";
+import eventBus from '../../../utils/eventBus.ts';
+import NPCManager from './NPCManager.ts';
 
 export default class WebSocketHandler {
-    private websocket: WebSocketService;
-    private playerManager: PlayerManager;
-    private notificationManager: NotificationManager;
-    private projectileManager: ProjectileManager;
+    private readonly websocket: WebSocketService;
+    private readonly playerManager: PlayerManager;
+    private readonly notificationManager: NotificationManager;
+    private readonly projectileManager: ProjectileManager;
+    private readonly npcManager: NPCManager;
     private readonly username: string;
-    private scene: Phaser.Scene;
+    private readonly scene: Phaser.Scene;
 
     // Store bound handlers for cleanup
-    private boundHandlers: Map<string, (data: any) => void> = new Map();
+    private readonly boundHandlers: Map<string, (data: any) => void> = new Map();
 
     constructor(
         scene: Phaser.Scene,
@@ -22,12 +24,14 @@ export default class WebSocketHandler {
         playerManager: PlayerManager,
         notificationManager: NotificationManager,
         projectileManager: ProjectileManager,
+        npcManager: NPCManager,
     ) {
         this.scene = scene;
         this.websocket = websocket;
         this.playerManager = playerManager;
         this.notificationManager = notificationManager;
         this.projectileManager = projectileManager;
+        this.npcManager = npcManager;
 
         const username = this.websocket.getUsername();
         if (!username) {
@@ -54,6 +58,14 @@ export default class WebSocketHandler {
         return this.websocket.isSocketConnected();
     }
 
+    public cleanup(): void {
+        // Remove all message handlers to prevent duplicate handlers
+        this.boundHandlers.forEach((handler, type) => {
+            this.websocket.offMessageType(type, handler);
+        });
+        this.boundHandlers.clear();
+    }
+
     private redirectToLogin(): void {
         // Use setTimeout to ensure this happens after current execution context
         setTimeout(() => {
@@ -68,34 +80,133 @@ export default class WebSocketHandler {
     private setupMessageHandler(): void {
         // Register handlers for specific message types and store bound references
         const handlers = [
-            { type: 'player_joined', handler: this.handlePlayerJoined.bind(this) },
-            { type: 'player_left', handler: this.handlePlayerLeft.bind(this) },
-            { type: 'player_update', handler: this.handlePlayerUpdate.bind(this) },
-            { type: 'game_state', handler: this.handleGameState.bind(this) },
-            { type: 'player_list', handler: this.handlePlayerList.bind(this) },
-            { type: 'player_damaged', handler: this.handlePlayerDamaged.bind(this) },
-            { type: 'player_healed', handler: this.handlePlayerHealed.bind(this) },
-            { type: 'projectile_created', handler: this.handleProjectileCreated.bind(this) },
-            { type: 'projectile_removed', handler: this.handleProjectileRemoved.bind(this) },
-            { type: 'room_status', handler: this.handleRoomStatus.bind(this) },
-            { type: 'countdown_started', handler: this.handleCountdownStarted.bind(this) },
-            { type: 'countdown', handler: this.handleCountdown.bind(this) },
-            { type: 'countdown_cancelled', handler: this.handleCountdownCancelled.bind(this) },
-            { type: 'game_started', handler: this.handleGameStarted.bind(this) },
-            { type: 'game_ended', handler: this.handleGameEnded.bind(this) },
-            { type: 'time_remaining', handler: this.handleTimeRemaining.bind(this) },
-            { type: 'connection_failed', handler: this.handleConnectionFailed.bind(this) },
-            { type: 'room_shutdown', handler: this.handleRoomShutdown.bind(this) },
-            { type: 'chat_message', handler: this.handleChatMessage.bind(this) },
-            { type: 'growing_damage_zone_start', handler: this.handleGrowingDamageZoneStart.bind(this) },
-            { type: 'growing_damage_zone_update', handler: this.handleGrowingDamageZoneUpdate.bind(this) },
-            { type: 'growing_damage_zone_stop', handler: this.handleGrowingDamageZoneStop.bind(this) },
+            {
+                type: 'player_joined',
+                handler: this.handlePlayerJoined.bind(this)
+            },
+            {
+                type: 'player_left',
+                handler: this.handlePlayerLeft.bind(this)
+            },
+            {
+                type: 'player_update',
+                handler: this.handlePlayerUpdate.bind(this)
+            },
+            {
+                type: 'game_state',
+                handler: this.handleGameState.bind(this)
+            },
+            {
+                type: 'player_list',
+                handler: this.handlePlayerList.bind(this)
+            },
+            {
+                type: 'player_damaged',
+                handler: this.handlePlayerDamaged.bind(this)
+            },
+            {
+                type: 'player_healed',
+                handler: this.handlePlayerHealed.bind(this)
+            },
+            {
+                type: 'player_skin_changed',
+                handler: this.handlePlayerSkinChanged.bind(this)
+            },
+            {
+                type: 'projectile_created',
+                handler: this.handleProjectileCreated.bind(this)
+            },
+            {
+                type: 'projectile_removed',
+                handler: this.handleProjectileRemoved.bind(this)
+            },
+            {
+                type: 'room_status',
+                handler: this.handleRoomStatus.bind(this)
+            },
+            {
+                type: 'countdown_started',
+                handler: this.handleCountdownStarted.bind(this)
+            },
+            {
+                type: 'countdown',
+                handler: this.handleCountdown.bind(this)
+            },
+            {
+                type: 'countdown_cancelled',
+                handler: this.handleCountdownCancelled.bind(this)
+            },
+            {
+                type: 'game_started',
+                handler: this.handleGameStarted.bind(this)
+            },
+            {
+                type: 'game_ended',
+                handler: this.handleGameEnded.bind(this)
+            },
+            {
+                type: 'time_remaining',
+                handler: this.handleTimeRemaining.bind(this)
+            },
+            {
+                type: 'connection_failed',
+                handler: this.handleConnectionFailed.bind(this)
+            },
+            {
+                type: 'room_shutdown',
+                handler: this.handleRoomShutdown.bind(this)
+            },
+            {
+                type: 'chat_message',
+                handler: this.handleChatMessage.bind(this)
+            },
+            {
+                type: 'growing_damage_zone_start',
+                handler: this.handleGrowingDamageZoneStart.bind(this)
+            },
+            {
+                type: 'growing_damage_zone_update',
+                handler: this.handleGrowingDamageZoneUpdate.bind(this)
+            },
+            {
+                type: 'growing_damage_zone_stop',
+                handler: this.handleGrowingDamageZoneStop.bind(this)
+            },
+            {
+                type: 'npc_spawned',
+                handler: this.handleNPCSpawned.bind(this)
+            },
+            {
+                type: 'npc_update',
+                handler: this.handleNPCUpdate.bind(this)
+            },
+            {
+                type: 'npc_damaged',
+                handler: this.handleNPCDamaged.bind(this)
+            },
         ];
 
-        handlers.forEach(({ type, handler }) => {
+        handlers.forEach(({
+                              type,
+                              handler
+                          }) => {
             this.boundHandlers.set(type, handler);
             this.websocket.onMessageType(type, handler);
         });
+
+        // Send spawn points to server after connection
+        this.websocket.onMessageType('room_status', () => {
+            this.sendSpawnPointsToServer();
+        });
+    }
+
+    private sendSpawnPointsToServer(): void {
+        const spawnPoints = SpawnPointManager.getInstance().getAllSpawnpoints();
+        if (spawnPoints.length > 0) {
+            this.websocket.sendMessage('spawn_points', {
+                spawnPoints: spawnPoints
+            });
+        }
     }
 
     private handleProjectileCreated(data: any): void {
@@ -106,7 +217,8 @@ export default class WebSocketHandler {
             data.directionX,
             data.directionY,
             data.ownerId,
-            data.id
+            data.id,
+            data.isNPC ?? false
         );
     }
 
@@ -142,7 +254,8 @@ export default class WebSocketHandler {
         if (data.username !== this.username) {
             // Only create player if they don't already exist to avoid duplicates
             if (!this.playerManager.hasPlayer(data.username)) {
-                this.playerManager.createPlayer(data.username, data.x, data.y, data.flipX);
+                const skin = data.skin ?? 'player_0';
+                this.playerManager.createPlayer(data.username, data.x, data.y, data.flipX, 4, false, skin);
                 this.notificationManager.showNotification(`Player ${data.username} joined!`);
             }
         }
@@ -178,13 +291,15 @@ export default class WebSocketHandler {
                 if (this.playerManager.hasPlayer(id)) {
                     this.playerManager.updatePlayer(id, playerData);
                 } else {
+                    const skin = playerData.skin ?? 'player_0';
                     this.playerManager.createPlayer(
                         id,
                         playerData.x,
                         playerData.y,
                         playerData.flipX,
                         playerData.health,
-                        playerData.isDead
+                        playerData.isDead,
+                        skin
                     );
                 }
 
@@ -206,12 +321,40 @@ export default class WebSocketHandler {
 
     private handlePlayerList(data: any): void {
         if (data.players) {
-            data.players.forEach((username: string) => {
+            data.players.forEach((player: any) => {
+                const username = typeof player === 'string' ? player : player.username;
+                const skin = typeof player === 'object' && player.skin ? player.skin : '';
+
                 if (!this.playerManager.hasPlayer(username)) {
                     const spawnPosition = SpawnPointManager.getInstance().getRandomSpawnpoint();
-                    this.playerManager.createPlayer(username, spawnPosition.x, spawnPosition.y);
+                    this.playerManager.createPlayer(username, spawnPosition.x, spawnPosition.y, false, 4, false, skin);
                 }
             });
+        }
+    }
+
+    private handleNPCSpawned(data: any): void {
+        this.npcManager.spawnNPC({
+            id: data.id,
+            x: data.x,
+            y: data.y,
+            health: data.health,
+            maxHealth: data.maxHealth,
+        });
+        this.notificationManager.showNotification('A hostile NPC has appeared!');
+    }
+
+    private handleNPCUpdate(data: any): void {
+        if (data.npcs) {
+            this.npcManager.updateNPCs(data)
+        }
+    }
+
+    private handleNPCDamaged(data: any): void {
+        this.npcManager.damageNPC(data);
+
+        if (data.died) {
+            this.notificationManager.showNotification('NPC died!')
         }
     }
 
@@ -247,14 +390,14 @@ export default class WebSocketHandler {
     private handleConnectionFailed(data: any): void {
         console.error('Connection failed:', data);
 
-        let notificationMessage = 'Connection failed';
+        let notificationMessage: string;
 
         if (data.reason === 'room_full') {
             notificationMessage = 'Room is full! Please try again later.';
         } else if (data.reason === 'game_in_progress') {
             notificationMessage = 'A game is currently in progress. Please wait for it to finish.';
         } else {
-            notificationMessage = data.message || 'Unable to connect to game room';
+            notificationMessage = data.message ?? 'Unable to connect to game room';
         }
 
         this.notificationManager.showNotification(notificationMessage);
@@ -265,9 +408,9 @@ export default class WebSocketHandler {
     }
 
     private handleRoomShutdown(data: any): void {
-        this.notificationManager.showNotification(`${data.reason || 'Room is shutting down'}`);
+        this.notificationManager.showNotification(`${data.reason ?? 'Room is shutting down'}`);
 
-        setTimeout(() =>{
+        setTimeout(() => {
             eventBus.emit('backToMenu');
         }, 3000);
     }
@@ -275,6 +418,22 @@ export default class WebSocketHandler {
     private handleChatMessage(data: any): void {
         // Emit chat message event for the Chat component to handle
         eventBus.emit('chat_message', data);
+    }
+
+    private handlePlayerSkinChanged(data: any): void {
+        // Update the skin of the player who changed it
+        if (data.username && data.username !== this.username && data.skin) {
+
+            // Check if the player exists
+            if (this.playerManager.hasPlayer(data.username)) {
+                // Get the current player sprite
+                const playerSprite = this.playerManager.getPlayerSprite(data.username);
+                if (playerSprite) {
+                    // Update the player's skin
+                    this.playerManager.updatePlayerSkin(data.username, data.skin);
+                }
+            }
+        }
     }
 
     private getPlayerUsernames(): string[] {
@@ -299,13 +458,5 @@ export default class WebSocketHandler {
     private clearAllExistingHandlers(): void {
         // Clear all existing handlers from the WebSocketService
         (this.websocket as any).messageTypeHandlers.clear();
-    }
-
-    public cleanup(): void {
-        // Remove all message handlers to prevent duplicate handlers
-        this.boundHandlers.forEach((handler, type) => {
-            this.websocket.offMessageType(type, handler);
-        });
-        this.boundHandlers.clear();
     }
 }

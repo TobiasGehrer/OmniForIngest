@@ -1,7 +1,9 @@
-import {useEffect, useState} from "react";
-import WebSocketService from "../../services/WebSocketService.ts";
-import eventBus from "../../../utils/eventBus.ts";
+import {useEffect, useState} from 'react';
+import WebSocketService from '../../services/WebSocketService.ts';
+import eventBus from '../../../utils/eventBus.ts';
 import './GameLobbyUI.css';
+import {getPlayerColorCSS} from '../../../utils/getPlayerColor.ts';
+import useHoverSound from '../../../hooks/useHoverSound.ts';
 
 interface RoomStatus {
     gameState: string;
@@ -20,7 +22,8 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
     const [isReady, setIsReady] = useState(false);
     const [isVisible, setIsVisible] = useState(true);
     const websocketService = WebSocketService.getInstance();
-    
+    const playHoverSound = useHoverSound();
+
     console.log('GameLobbyUI component loaded for username:', username);
 
     useEffect(() => {
@@ -29,11 +32,15 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
             setIsReady(data.readyStates[username] || false);
         };
 
-        const handleCountdownStarted = (data: { duration: number }) => {
+        const handleCountdownStarted = (data: {
+            duration: number
+        }) => {
             setCountdown(data.duration);
         };
 
-        const handleCountdown = (data: { seconds: number }) => {
+        const handleCountdown = (data: {
+            seconds: number
+        }) => {
             setCountdown(data.seconds);
         };
 
@@ -76,7 +83,7 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
     };
 
     console.log('GameLobbyUI render - isVisible:', isVisible, 'roomStatus:', roomStatus);
-    
+
     if (!isVisible || !roomStatus) {
         console.log('GameLobbyUI hidden - isVisible:', isVisible, 'roomStatus exists:', !!roomStatus);
         return null;
@@ -88,9 +95,8 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
 
     return (
         <div className="game-lobby-ui">
-            <div className="game-lobby-ui__container">
+            <div className="game-lobby-ui__container" data-title="Game Lobby">
                 <div className="game-lobby-ui__header">
-                    <h2>Game Lobby</h2>
                     <div className="game-lobby-ui__player-count">
                         {roomStatus.playerCount}/{roomStatus.maxPlayers} Players
                     </div>
@@ -104,16 +110,23 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
                 ) : (
                     <div className="game-lobby-ui__content">
                         <div className="game-lobby-ui__players">
-                            <h3>Players ({readyCount}/{roomStatus.playerCount} Ready)</h3>
+                            <h3>Ready {readyCount}/{roomStatus.playerCount}</h3>
                             <div className="game-lobby-ui__player-list">
                                 {Object.entries(roomStatus.readyStates).map(([playerName, isPlayerReady]) => (
                                     <div
                                         key={playerName}
                                         className={`game-lobby-ui__player ${isPlayerReady ? 'game-lobby-ui__player--ready' : ''}`}
                                     >
-                                        <span className="game-lobby-ui__player-name">{playerName}</span>
-                                        <span className={`game-lobby-ui__player-status ${isPlayerReady ? 'ready' : 'not-ready'}`}>
-                                            {isPlayerReady ? '✓ Ready' : '⏳ Not Ready'}
+                                        <span className="game-lobby-ui__player-name"
+                                              style={{color: getPlayerColorCSS(playerName)}}>{playerName}</span>
+                                        <span
+                                            className={`game-lobby-ui__player-status ${isPlayerReady ? 'ready' : 'not-ready'}`}>
+                                            {isPlayerReady ? (
+                                                    <img width="16" height="16" alt="" src={'/ui/check.svg'}/>
+                                                ) :
+                                                <img width="16" height="16" alt="" src={'/ui/cross.svg'}/>
+                                            }
+                                            {isPlayerReady ? 'Ready' : 'Not Ready'}
                                         </span>
                                     </div>
                                 ))}
@@ -121,23 +134,28 @@ const GameLobbyUI: React.FC<GameLobbyUIProps> = ({username}) => {
                         </div>
 
                         <div className="game-lobby-ui__actions">
+                            {roomStatus.playerCount < 2 && (
+                                <div className="game-lobby-ui__waiting-message">
+                                    Waiting for more players (minimum 2)
+                                </div>
+                            )}
+
                             <button
-                                className={`game-lobby-ui__ready-btn ${isReady ? 'ready' : 'not-ready'}`}
+                                className={`button ${isReady ? 'ready' : 'not-ready'}`}
                                 onClick={handleReadyToggle}
                                 disabled={!canToggleReady}
+                                variant="primary"
+                                onMouseEnter={playHoverSound}
                             >
-                                {isReady ? '✓ Ready' : 'Ready Up'}
+                                {isReady && (
+                                    <img width="16" height="16" alt="" src={'/ui/check.svg'}/>
+                                )}
+                                {isReady ? ' Ready' : 'Ready Up'}
                             </button>
 
                             {roomStatus.playerCount >= 2 && allPlayersReady && (
                                 <div className="game-lobby-ui__start-message">
-                                    All players ready! Game starting soon...
-                                </div>
-                            )}
-
-                            {roomStatus.playerCount < 2 && (
-                                <div className="game-lobby-ui__waiting-message">
-                                    Waiting for more players (minimum 2)
+                                    All players ready! Game starting...
                                 </div>
                             )}
                         </div>

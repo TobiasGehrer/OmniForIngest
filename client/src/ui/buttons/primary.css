@@ -1,4 +1,8 @@
 .button[variant="primary"] {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    column-gap: 6px;
     width: 100%;
     padding: 20px 30px;
     border-width: 0;
